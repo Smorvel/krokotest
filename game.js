@@ -55,8 +55,8 @@
   var wasHitPaused = false;
   var previousTool = 'brush';
   var draftFrame = null;
-  var zoom = 1;
   var knobDrag = null;
+  var stampCache = {};
 
   var tool = {
     current: 'brush',
@@ -81,11 +81,7 @@
     toolRail: document.getElementById('toolRail'),
     toolGrid: document.getElementById('toolGrid'),
     sizeKnob: document.getElementById('sizeKnob'),
-    sizeKnobValue: document.getElementById('sizeKnobValue'),
-    sizeText: document.getElementById('sizeText'),
     alphaKnob: document.getElementById('alphaKnob'),
-    alphaKnobValue: document.getElementById('alphaKnobValue'),
-    alphaText: document.getElementById('alphaText'),
     pipetteBtn: document.getElementById('pipetteBtn'),
     smoothBtn: document.getElementById('smoothBtn'),
     undo: document.getElementById('undoBtn'),
@@ -98,10 +94,6 @@
     wrap: document.getElementById('canvasWrap'),
     cursor: document.getElementById('brushCursor'),
     hitToast: document.getElementById('hitToast'),
-    zoomOut: document.getElementById('zoomOutBtn'),
-    zoomIn: document.getElementById('zoomInBtn'),
-    zoomFit: document.getElementById('zoomFitBtn'),
-    zoomText: document.getElementById('zoomText'),
     inkBlobs: document.getElementById('inkBlobs'),
     bgSquare: document.getElementById('bgSquare'),
     colorEditorBtn: document.getElementById('colorEditorBtn'),
@@ -112,10 +104,9 @@
     bgHexInputs: document.querySelectorAll('.bg-hex-input'),
     editorRecent: document.getElementById('editorRecent'),
     palettePopover: document.getElementById('palettePopover'),
-    popoverPresets: document.getElementById('popoverPresets'),
-    popoverRecent: document.getElementById('popoverRecent'),
+    popoverColorInput: document.getElementById('popoverColorInput'),
+    popoverHexInput: document.getElementById('popoverHexInput'),
     palettePopoverClose: document.getElementById('palettePopoverClose'),
-    paletteMoreBtn: document.getElementById('paletteMoreBtn'),
     status: document.getElementById('statusText'),
     sync: document.getElementById('syncText'),
     panelTabs: document.getElementById('panelTabs'),
@@ -130,6 +121,7 @@
     dictCheckList: document.getElementById('dictCheckList'),
     dictNote: document.getElementById('dictNote'),
     roundMinInput: document.getElementById('roundMinInput'),
+    disableHintsInput: document.getElementById('disableHintsInput'),
     settingsNote: document.getElementById('settingsNote'),
     settingsName: document.getElementById('settingsName'),
     settingsNameSave: document.getElementById('settingsNameSave'),
@@ -187,14 +179,52 @@
   }
 
   function maskPhrase(text) {
+    return displayCharacters(text, true).map(function (item) { return item.char; }).join('');
+  }
+
+  function displayCharacters(text, forceGuesser) {
     var guessed = {};
     (state && state.guessedWords || []).forEach(function (key) { guessed[key] = true; });
-    return String(text || '').split(/(\s+)/).map(function (part) {
-      if (!part.trim()) return part;
-      var core = normToken(part);
-      if (core && guessed[core]) return part;
-      return part.replace(/[a-zа-яё0-9]/gi, '•');
-    }).join('');
+    var drawerView = !forceGuesser && isDrawer();
+    var hintDue = !!(state && !state.hintsDisabled && state.roundMs > 0 &&
+      Date.now() - state.startedAt >= state.roundMs * 0.9);
+    var hintLeft = hintDue && !drawerView;
+    var parts = String(text || '').split(/(\s+)/);
+    var result = [];
+    parts.forEach(function (part) {
+      if (!part.trim()) {
+        result.push({ char: part, space: true });
+        return;
+      }
+      var key = normToken(part);
+      var revealAll = drawerView || (key && guessed[key]);
+      for (var i = 0; i < part.length; i++) {
+        var ch = part.charAt(i);
+        var isLetter = /[a-zа-яё0-9]/i.test(ch);
+        if (!isLetter) {
+          result.push({ char: ch, plain: true });
+        } else if (revealAll || hintLeft) {
+          if (hintLeft && !revealAll) hintLeft = false;
+          result.push({ char: ch, revealed: true });
+        } else {
+          result.push({ char: '•', masked: true });
+        }
+      }
+    });
+    return result;
+  }
+
+  function reactionValue(id) {
+    var reaction = state && state.reactions && state.reactions[id];
+    if (!reaction) return '';
+    if (reaction.value === 'like' || reaction.value === 'dislike') return reaction.value;
+    if (Array.isArray(reaction.likes) && reaction.likes.length) return 'like';
+    if (Array.isArray(reaction.dislikes) && reaction.dislikes.length) return 'dislike';
+    return '';
+  }
+
+  function reactionIcon(value) {
+    return value === 'like' ? '👍' : (value === 'dislike' ? '👎' : '');
   }
 
   function selectedDictionaryIds() {
@@ -303,7 +333,19 @@
     s.strokes = Array.isArray(s.strokes) ? s.strokes.slice(-80) : [];
     s.messages = Array.isArray(s.messages) ? s.messages.slice(-50) : [];
     s.scores = s.scores && typeof s.scores === 'object' ? s.scores : {};
-    s.reactions = s.reactions && typeof s.reactions === 'object' ? s.reactions : {};
+    s.reactions = s.reactions && typeof s.reactions === 'object'
+      ? Object.keys(s.reactions).reduce(function (acc, id) {
+          var raw = s.reactions[id] || {};
+          var value = raw.value === 'like' || raw.value === 'dislike'
+            ? raw.value
+            : (Array.isArray(raw.likes) && raw.likes.length
+              ? 'like'
+              : (Array.isArray(raw.dislikes) && raw.dislikes.length ? 'dislike' : ''));
+          acc[id] = { value: value };
+          return acc;
+        }, {})
+      : {};
+    s.hintsDisabled = !!s.hintsDisabled;
     s.queue = Array.isArray(s.queue) ? s.queue.filter(function (id) { return typeof id === 'string'; }) : [];
     s.bans = Array.isArray(s.bans) ? s.bans.filter(function (id) { return typeof id === 'string'; }) : [];
     s.banRecords = Array.isArray(s.banRecords) ? s.banRecords.filter(function (r) { return r && r.id; }) : [];
@@ -413,6 +455,7 @@
     }
     state.queue = ids;
     state.drawer = ids[0] || myId;
+    var endingAt = state.startedAt;
     chooseNextWord();
     state.round += 1;
     state.startedAt = Date.now();
@@ -422,7 +465,7 @@
     state.waitingForPlayers = false;
     state.expiredAt = 0;
     handledHitId = null;
-    handledStart = state.startedAt;
+    handledStart = endingAt;
     drawing = false;
     localDraft = null;
     remoteDrafts = {};
@@ -443,7 +486,7 @@
       if ((isDrawer() || isCreator()) && !state.waitingForPlayers) {
         state.waitingForPlayers = true;
         state.expiredAt = Date.now();
-        handledStart = state.startedAt;
+        handledStart = 0;
         systemMessage('Время вышло. Ждём игроков — раунд не заканчивается.');
         publishState();
         renderAll();
@@ -457,7 +500,7 @@
       state.waitingForPlayers = false;
       state.expiredAt = 0;
       state.startedAt = Date.now() - state.roundMs + 60000;
-      handledStart = state.startedAt;
+      handledStart = 0;
       systemMessage('Игрок вошёл — раунд продлён на 60 секунд.');
       publishState();
       renderAll();
@@ -471,16 +514,11 @@
   }
 
   function issueHintIfNeeded() {
-    if (!state || state.roundMs === 0 || state.hintSent || isHitPaused()) return;
+    if (!state || state.hintsDisabled || state.roundMs === 0 || state.hintSent || isHitPaused()) return;
     if (!isDrawer()) return;
     if (Date.now() - state.startedAt < state.roundMs * 0.9) return;
     state.hintSent = true;
-    var masked = maskPhrase(word());
-    var targets = phraseTargets();
-    var first = targets.length ? targets[0].display.charAt(0) : masked.charAt(0);
-    var pos = masked.indexOf('•');
-    if (pos >= 0) masked = masked.slice(0, pos) + first + masked.slice(pos + 1);
-    systemMessage('Подсказка: ' + masked);
+    systemMessage('Подсказка: ' + maskPhrase(word()));
     publishState();
   }
 
@@ -525,7 +563,7 @@
     state.hintSent = false;
     remoteDrafts = {};
     localDraft = null;
-    handledStart = state.startedAt;
+    handledStart = 0;
     var next = players.filter(function (p) { return p.id === state.drawer; })[0];
     systemMessage('Художник вышел. Теперь рисует ' + (next ? next.name : profile.name) + '.');
     publishState();
@@ -660,6 +698,22 @@
     context.putImageData(image, 0, 0);
   }
 
+  function cachedStamp(key, diameter, draw) {
+    var cached = stampCache[key];
+    if (!cached) {
+      var pad = 3;
+      var side = Math.ceil(diameter) + pad * 2;
+      var stamp = document.createElement('canvas');
+      stamp.width = side;
+      stamp.height = side;
+      var stampCtx = stamp.getContext('2d');
+      draw(stampCtx, side / 2, diameter);
+      cached = { canvas: stamp, half: side / 2 };
+      stampCache[key] = cached;
+    }
+    return cached;
+  }
+
   function paintStroke(context, stroke) {
     if (!stroke || !Array.isArray(stroke.points) || !stroke.points.length) return;
     var points = stroke.points;
@@ -676,10 +730,13 @@
     context.strokeStyle = color;
     context.fillStyle = color;
     context.globalAlpha = alpha;
+    context.globalCompositeOperation = 'source-over';
 
     if (stroke.tool === 'eraser') {
-      context.globalCompositeOperation = 'destination-out';
+      var eraseColor = stroke.bg || (state && state.bg) || tool.bg || '#ffffff';
       context.globalAlpha = 1;
+      context.strokeStyle = eraseColor;
+      context.fillStyle = eraseColor;
       context.lineWidth = size * 1.5;
       strokePath(context, points, smooth);
       context.stroke();
@@ -690,32 +747,39 @@
     if (stroke.tool === 'soft') {
       var rgb = hexToRgb(color);
       var radius = size * 1.05;
-      context.globalAlpha = 1;
-      stampAlong(points, Math.max(2, size * 0.16), function (x, y) {
-        var gradient = context.createRadialGradient(x, y, 0, x, y, radius);
-        gradient.addColorStop(0, 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',' + (0.72 * alpha) + ')');
-        gradient.addColorStop(0.45, 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',' + (0.28 * alpha) + ')');
+      var stamp = cachedStamp('soft|' + color + '|' + alpha.toFixed(2) + '|' + radius.toFixed(1), radius * 2, function (c, center, diameter) {
+        var r = diameter / 2;
+        var gradient = c.createRadialGradient(center, center, 0, center, center, r);
+        gradient.addColorStop(0, 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',' + (0.72 * alpha).toFixed(3) + ')');
+        gradient.addColorStop(0.45, 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',' + (0.28 * alpha).toFixed(3) + ')');
         gradient.addColorStop(1, 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',0)');
-        context.fillStyle = gradient;
-        context.beginPath();
-        context.arc(x, y, radius, 0, Math.PI * 2);
-        context.fill();
+        c.fillStyle = gradient;
+        c.beginPath();
+        c.arc(center, center, r, 0, Math.PI * 2);
+        c.fill();
+      });
+      context.globalAlpha = 1;
+      stampAlong(points, Math.max(2, radius * 0.3), function (x, y) {
+        context.drawImage(stamp.canvas, x - stamp.half, y - stamp.half);
       });
       context.restore();
       return;
     }
 
     if (stroke.tool === 'tablet') {
-      context.lineCap = 'round';
+      var lastWidth = size;
+      context.globalAlpha = alpha;
       for (var i = 1; i < points.length; i++) {
         var a = points[i - 1];
         var b = points[i];
         var dist = Math.hypot(b.x - a.x, b.y - a.y);
-        var speed = a.t && b.t ? Math.max(0, (b.t - a.t)) : 0;
-        var factor;
-        if (speed > 0) factor = Math.max(0.55, Math.min(1.8, 1.8 - (dist / speed) * 0.35));
-        else factor = Math.max(0.6, Math.min(1.7, 1.7 - Math.min(dist, 50) / 50));
-        context.lineWidth = size * factor;
+        var dt = a.t && b.t ? Math.max(1, b.t - a.t) : 16;
+        var speed = dist / dt;
+        var target = size * Math.max(0.6, Math.min(1.9, 1.85 - speed * 0.5));
+        if (b.p && b.p > 0 && b.p !== 0.5) target *= Math.max(0.75, Math.min(1.3, 0.7 + b.p * 0.6));
+        var width = lastWidth * 0.55 + target * 0.45;
+        lastWidth = width;
+        context.lineWidth = width;
         context.beginPath();
         context.moveTo(a.x, a.y);
         context.lineTo(b.x, b.y);
@@ -732,16 +796,22 @@
 
     if (stroke.tool === 'shape') {
       var mode = SHAPE_LABELS[stroke.shapeMode] ? stroke.shapeMode : tool.shapeMode;
-      stampAlong(points, Math.max(2, size * 0.22), function (x, y) {
+      var shapeStamp = cachedStamp('shape|' + mode + '|' + color + '|' + alpha.toFixed(2) + '|' + size, size + 2, function (c, center) {
+        c.fillStyle = color;
+        c.globalAlpha = alpha;
         if (mode === 'circle') {
-          context.beginPath();
-          context.arc(x, y, size / 2, 0, Math.PI * 2);
-          context.fill();
+          c.beginPath();
+          c.arc(center, center, size / 2, 0, Math.PI * 2);
+          c.fill();
         } else if (mode === 'stripe') {
-          context.fillRect(x - size / 2, y - size * 0.14, size, size * 0.28);
+          c.fillRect(center - size / 2, center - size * 0.14, size, size * 0.28);
         } else {
-          context.fillRect(x - size / 2, y - size / 2, size, size);
+          c.fillRect(center - size / 2, center - size / 2, size, size);
         }
+      });
+      context.globalAlpha = 1;
+      stampAlong(points, Math.max(4, size * 1.05), function (x, y) {
+        context.drawImage(shapeStamp.canvas, x - shapeStamp.half, y - shapeStamp.half);
       });
       context.restore();
       return;
@@ -857,11 +927,6 @@
     el.cursor.hidden = false;
   }
 
-  function applyZoom() {
-    el.wrap.style.setProperty('--canvas-zoom', zoom);
-    el.zoomText.textContent = Math.round(zoom * 100) + '%';
-  }
-
   /* ---------- Интерфейс ---------- */
 
   function renderPlayers() {
@@ -896,16 +961,14 @@
 
   function reactionMarkup(message) {
     if (message.system) return '';
-    var reaction = state && state.reactions && state.reactions[message.id] ? state.reactions[message.id] : {};
-    var likes = Array.isArray(reaction.likes) ? reaction.likes : [];
-    var dislikes = Array.isArray(reaction.dislikes) ? reaction.dislikes : [];
-    var canReact = (isDrawer() || isCreator()) && !isBannedMe();
-    return '<div class="react-bar">' +
-      (canReact
-        ? '<button class="react-btn' + (likes.indexOf(myId) >= 0 ? ' mine' : '') + '" type="button" data-react="like" data-msg="' + K.escapeHtml(message.id) + '">👍</button>' +
-          '<button class="react-btn' + (dislikes.indexOf(myId) >= 0 ? ' mine' : '') + '" type="button" data-react="dislike" data-msg="' + K.escapeHtml(message.id) + '">👎</button>'
-        : '') +
-      '<span title="лайки">👍 ' + likes.length + '</span><span title="дизлайки">👎 ' + dislikes.length + '</span></div>';
+    var value = reactionValue(message.id);
+    if (!isDrawer() || isBannedMe()) {
+      return value ? '<span class="react-mark">' + reactionIcon(value) + '</span>' : '';
+    }
+    return '<span class="reaction-slot">' +
+      '<button class="react-btn' + (value === 'like' ? ' active' : '') + '" type="button" data-react="like" data-msg="' + K.escapeHtml(message.id) + '" aria-label="Лайк">👍</button>' +
+      '<button class="react-btn' + (value === 'dislike' ? ' active' : '') + '" type="button" data-react="dislike" data-msg="' + K.escapeHtml(message.id) + '" aria-label="Дизлайк">👎</button>' +
+      '</span>';
   }
 
   function renderMessages() {
@@ -919,7 +982,7 @@
       var body = message.system
         ? K.escapeHtml(message.text)
         : '<b>' + K.escapeHtml(message.name) + ':</b> ' + K.escapeHtml(message.text);
-      return '<div class="' + cls + '">' + body + reactionMarkup(message) + '</div>';
+      return '<div class="' + cls + '">' + reactionMarkup(message) + body + '</div>';
     }).join('');
     el.messages.scrollTop = el.messages.scrollHeight;
   }
@@ -931,7 +994,11 @@
     el.drawer.textContent = drawer ? drawer.name : '—';
     el.round.textContent = state.round;
     el.wordSourceLabel.textContent = getDictionary().name;
-    el.word.textContent = isDrawer() ? word() : maskPhrase(word());
+    el.word.innerHTML = displayCharacters(word()).map(function (item) {
+      if (item.space) return '<span class="word-space">' + K.escapeHtml(item.char) + '</span>';
+      if (item.plain) return K.escapeHtml(item.char);
+      return '<span class="letter-circle' + (item.masked ? ' masked' : '') + '">' + K.escapeHtml(item.char) + '</span>';
+    }).join('');
   }
 
   function swatchButton(color, className) {
@@ -942,18 +1009,12 @@
   function renderPalettes() {
     var recent = (profile.recentColors || []).slice(0, 9);
     while (recent.length < 9) recent.push('');
-    [el.inkBlobs].forEach(function (node) {
-      if (node) node.innerHTML = PRESET_COLORS.map(function (c) { return swatchButton(c, 'ink-blob '); }).join('');
-    });
-    [el.popoverPresets].forEach(function (node) {
-      if (node) node.innerHTML = PRESET_COLORS.map(function (c) { return swatchButton(c, 'swatch '); }).join('');
-    });
-    [el.popoverRecent, el.editorRecent].forEach(function (node) {
-      if (!node) return;
-      node.innerHTML = recent.map(function (color) {
+    if (el.inkBlobs) el.inkBlobs.innerHTML = PRESET_COLORS.map(function (c) { return swatchButton(c, 'ink-blob '); }).join('');
+    if (el.editorRecent) {
+      el.editorRecent.innerHTML = recent.map(function (color) {
         return color ? swatchButton(color, 'swatch ') : '<span class="empty-swatch"></span>';
       }).join('');
-    });
+    }
     el.bgSquare.style.background = tool.bg;
   }
 
@@ -968,9 +1029,8 @@
     el.toolGrid.innerHTML = TOOLS.map(function (entry) {
       if (entry.sep) return '<div class="tool-btn tool-sep" aria-hidden="true"></div>';
       var title = entry.name + (entry.id === 'shape' ? ': ' + SHAPE_LABELS[tool.shapeMode] : '');
-      return '<button class="tool-btn' + (tool.current === entry.id ? ' active' : '') + '" type="button" data-tool="' + entry.id + '" title="' + title + '">' +
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + entry.icon + '</svg>' +
-        '<span class="tool-name">' + (entry.id === 'shape' ? 'Фигурная: ' + SHAPE_LABELS[tool.shapeMode] : entry.name) + '</span></button>';
+      return '<button class="tool-btn' + (tool.current === entry.id ? ' active' : '') + '" type="button" data-tool="' + entry.id + '" title="' + K.escapeHtml(title) + '">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + entry.icon + '</svg></button>';
     }).join('');
   }
 
@@ -1006,12 +1066,11 @@
       button.disabled = !canDraw;
     });
 
-    el.sizeKnobValue.textContent = tool.size;
-    el.sizeText.textContent = tool.size + ' пикселей';
-    el.alphaKnobValue.textContent = tool.alpha;
-    el.alphaText.textContent = tool.alpha + '% прозрачности';
+    renderKnobs();
     el.pipetteBtn.classList.toggle('active', tool.current === 'pipette');
-    el.smoothBtn.textContent = 'Плавность: ' + (tool.smooth ? 'вкл' : 'выкл');
+    var smoothTitle = 'Плавность: ' + (tool.smooth ? 'вкл' : 'выкл');
+    el.smoothBtn.textContent = '≈';
+    el.smoothBtn.title = smoothTitle;
     el.smoothBtn.classList.toggle('active', tool.smooth);
     el.smoothBtn.setAttribute('aria-pressed', tool.smooth ? 'true' : 'false');
     el.smoothBtn.disabled = !canDraw;
@@ -1041,6 +1100,8 @@
     var currentRoundMs = state && typeof state.roundMs === 'number' ? state.roundMs : DEFAULT_ROUND_MS;
     var minutes = Math.round(currentRoundMs / 60000 * 10) / 10;
     if (document.activeElement !== el.roundMinInput) el.roundMinInput.value = minutes;
+    el.disableHintsInput.checked = !!(state && state.hintsDisabled);
+    el.disableHintsInput.disabled = !isCreator();
     if (document.activeElement !== el.settingsName) el.settingsName.value = profile.name;
     renderDictChecks();
     renderInlineDicts();
@@ -1235,12 +1296,13 @@
       scores: {},
       bg: '#ffffff',
       hintSent: false,
+      hintsDisabled: false,
       waitingForPlayers: false,
       expiredAt: 0
     });
     chooseNextWord();
     systemMessage('Комната «' + (meta ? meta.name : 'Простые') + '» готова. Удачи!');
-    handledStart = state.startedAt;
+    handledStart = 0;
     publishState();
     renderAll();
   }
@@ -1353,6 +1415,8 @@
 
   canvas.addEventListener('pointerup', endStroke);
   canvas.addEventListener('pointercancel', endStroke);
+  document.addEventListener('pointerup', function (event) { if (drawing) endStroke(event); });
+  document.addEventListener('pointercancel', function (event) { if (drawing) endStroke(event); });
   canvas.addEventListener('pointerleave', function () { if (!drawing) el.cursor.hidden = true; });
   canvas.addEventListener('wheel', function (event) {
     if (!isDrawer() || isBannedMe()) return;
@@ -1364,6 +1428,17 @@
 
   /* Кружки размера и прозрачности */
 
+  function renderKnobs() {
+    var scale = (tool.size - 2) / (64 - 2);
+    var dot = Math.round(6 + Math.max(0, Math.min(1, scale)) * 20);
+    el.sizeKnob.style.setProperty('--knob-size', dot + 'px');
+    el.sizeKnob.style.setProperty('--knob-fill', tool.color);
+    el.alphaKnob.style.setProperty('--knob-fill', tool.color);
+    el.alphaKnob.style.setProperty('--knob-alpha', (tool.alpha / 100).toFixed(2));
+    el.sizeKnob.title = 'Размер: ' + tool.size + ' пикселей. Тяните вверх или вниз, клик — палитра.';
+    el.alphaKnob.title = 'Прозрачность: ' + tool.alpha + '%. Тяните вверх или вниз, клик — палитра.';
+  }
+
   function setKnobValue(kind, value) {
     var min = kind === 'size' ? 2 : 5;
     var max = kind === 'size' ? 64 : 100;
@@ -1371,14 +1446,11 @@
     if (kind === 'size') {
       tool.size = next;
       profile.brushSize = next;
-      el.sizeKnobValue.textContent = next;
-      el.sizeText.textContent = next + ' пикселей';
     } else {
       tool.alpha = next;
       profile.brushAlpha = next;
-      el.alphaKnobValue.textContent = next;
-      el.alphaText.textContent = next + '% прозрачности';
     }
+    renderKnobs();
     return next;
   }
 
@@ -1415,9 +1487,11 @@
 
   function openPalettePopover(anchor) {
     var rect = anchor.getBoundingClientRect();
+    el.popoverColorInput.value = tool.color;
+    el.popoverHexInput.value = tool.color;
     el.palettePopover.hidden = false;
-    el.palettePopover.style.left = Math.min(window.innerWidth - 260, rect.right + 10) + 'px';
-    el.palettePopover.style.top = Math.min(window.innerHeight - 260, rect.top) + 'px';
+    el.palettePopover.style.left = Math.min(window.innerWidth - 270, rect.right + 10) + 'px';
+    el.palettePopover.style.top = Math.min(window.innerHeight - 300, rect.top) + 'px';
   }
 
   function closePalettePopover() {
@@ -1427,9 +1501,10 @@
   el.sizeKnob.addEventListener('pointerdown', function (event) { beginKnobDrag(event, 'size'); });
   el.alphaKnob.addEventListener('pointerdown', function (event) { beginKnobDrag(event, 'alpha'); });
   el.palettePopoverClose.addEventListener('click', closePalettePopover);
-  el.paletteMoreBtn.addEventListener('click', function () {
-    closePalettePopover();
-    el.colorEditor.hidden = false;
+  el.popoverColorInput.addEventListener('input', function () { setInk(el.popoverColorInput.value); });
+  el.popoverHexInput.addEventListener('change', function () {
+    setInk(el.popoverHexInput.value);
+    el.popoverHexInput.value = tool.color;
   });
   document.addEventListener('pointerdown', function (event) {
     if (el.palettePopover.hidden) return;
@@ -1473,6 +1548,7 @@
     profile.inkColor = tool.color;
     rememberColor(tool.color);
     applyColorInputs();
+    renderKnobs();
   }
 
   function setBg(color) {
@@ -1514,10 +1590,6 @@
     K.setProfile(profile);
     renderTools();
   });
-
-  el.zoomOut.addEventListener('click', function () { zoom = Math.max(0.5, Math.round((zoom - 0.1) * 10) / 10); applyZoom(); });
-  el.zoomIn.addEventListener('click', function () { zoom = Math.min(2, Math.round((zoom + 0.1) * 10) / 10); applyZoom(); });
-  el.zoomFit.addEventListener('click', function () { zoom = 1; applyZoom(); });
 
   el.undo.addEventListener('click', function () {
     if (!state || !isDrawer()) return;
@@ -1605,20 +1677,10 @@
 
   el.messages.addEventListener('click', function (event) {
     var btn = event.target.closest('[data-react]');
-    if (!btn || !(isDrawer() || isCreator()) || !state) return;
+    if (!btn || !isDrawer() || isBannedMe() || !state) return;
     var id = btn.dataset.msg;
-    var kind = btn.dataset.react === 'like' ? 'likes' : 'dislikes';
-    var other = kind === 'likes' ? 'dislikes' : 'likes';
-    var reaction = state.reactions[id] || { likes: [], dislikes: [] };
-    if (!Array.isArray(reaction.likes)) reaction.likes = [];
-    if (!Array.isArray(reaction.dislikes)) reaction.dislikes = [];
-    var index = reaction[kind].indexOf(myId);
-    if (index >= 0) reaction[kind].splice(index, 1);
-    else {
-      reaction[other] = reaction[other].filter(function (v) { return v !== myId; });
-      reaction[kind].push(myId);
-    }
-    state.reactions[id] = reaction;
+    var value = btn.dataset.react === 'like' ? 'like' : 'dislike';
+    state.reactions[id] = { value: reactionValue(id) === value ? '' : value };
     publishState();
     renderMessages();
   });
@@ -1688,9 +1750,18 @@
     state.waitingForPlayers = false;
     state.expiredAt = 0;
     state.hintSent = false;
-    handledStart = state.startedAt;
+    handledStart = 0;
     el.roundMinInput.value = minutes;
     systemMessage(state.roundMs ? 'Время раунда: ' + minutes + ' мин.' : 'Время раунда: без ограничений.');
+    publishState();
+    renderAll();
+  });
+
+  el.disableHintsInput.addEventListener('change', function () {
+    if (!isCreator() || !state) return;
+    state.hintsDisabled = el.disableHintsInput.checked;
+    if (state.hintsDisabled) state.hintSent = false;
+    systemMessage(state.hintsDisabled ? 'Подсказки отключены.' : 'Подсказки включены.');
     publishState();
     renderAll();
   });
@@ -1786,12 +1857,15 @@
 
   setInterval(function () {
     if (client && client.connected) renderTimer();
+    if (state) {
+      issueHintIfNeeded();
+      renderWord();
+    }
   }, 1000);
 
   el.nameInput.value = profile.named ? profile.name : '';
   if (!profile.named) el.nameModal.showModal();
   renderToolsOnce();
-  applyZoom();
   applyMeta();
   renderAll();
   if (client.connected && !subscribedAt) {

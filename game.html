@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body data-page="game">
-  <header class="topbar game-topbar">
+  <header class="topbar game-topbar" hidden>
     <a class="brand" href="index.html"><span class="brand-mark">🎨</span><span>Кроко</span></a>
     <div class="room-meta">
       <strong id="roomTitle">Простые</strong>
@@ -28,37 +28,19 @@
 
   <main class="game-shell">
     <aside class="tool-rail" id="toolRail" aria-label="Инструменты рисования">
-      <div class="rail-title">Кисти</div>
       <div class="tool-grid" id="toolGrid"></div>
 
       <div class="rail-sep"></div>
-      <div class="knob-block">
-        <span class="rail-label">Размер</span>
-        <button class="knob" id="sizeKnob" type="button" title="Тяните вверх или вниз. Клик — палитра цветов.">
-          <span id="sizeKnobValue">18</span>
-        </button>
-        <div class="knob-caption"><b id="sizeText">18 пикселей</b></div>
-      </div>
-
-      <div class="knob-block">
-        <span class="rail-label">Прозрачность</span>
-        <button class="knob alpha-knob" id="alphaKnob" type="button" title="Тяните вверх или вниз. Клик — палитра цветов.">
-          <span id="alphaKnobValue">100</span>
-        </button>
-        <div class="knob-caption"><b id="alphaText">100% прозрачности</b></div>
-      </div>
-
-      <button class="pipette-btn" id="pipetteBtn" type="button" title="Взять цвет с холста">💧 Пипетка</button>
+      <button class="knob" id="sizeKnob" type="button" aria-label="Размер кисти"></button>
+      <button class="knob alpha-knob" id="alphaKnob" type="button" aria-label="Прозрачность кисти"></button>
 
       <div class="rail-sep"></div>
-      <button class="toggle-btn" id="smoothBtn" type="button" aria-pressed="false">Плавность: выкл</button>
-      <div class="rail-hint">сильнее сглаживание линий</div>
+      <button class="pipette-btn" id="pipetteBtn" type="button" aria-label="Пипетка" title="Взять цвет с холста">💧</button>
+      <button class="toggle-btn" id="smoothBtn" type="button" aria-label="Плавность" aria-pressed="false" title="Плавность: выкл">≈</button>
 
       <div class="rail-sep"></div>
-      <div class="rail-actions">
-        <button class="rail-button" id="undoBtn" type="button" title="Отменить штрих (Ctrl+Z)">↶ Отменить</button>
-        <button class="rail-button danger" id="clearBtn" type="button" title="Очистить холст">🗑 Очистить</button>
-      </div>
+      <button class="rail-button" id="undoBtn" type="button" aria-label="Отменить" title="Отменить штрих (Ctrl+Z)">↶</button>
+      <button class="rail-button danger" id="clearBtn" type="button" aria-label="Очистить" title="Очистить холст">🗑</button>
     </aside>
 
     <section class="stage">
@@ -74,18 +56,11 @@
         </div>
       </div>
 
-      <div class="canvas-wrap" id="canvasWrap" style="--canvas-zoom:1">
+      <div class="canvas-wrap" id="canvasWrap">
         <canvas id="drawCanvas" width="1000" height="750" aria-label="Общий холст"></canvas>
         <canvas id="draftCanvas" width="1000" height="750" aria-hidden="true"></canvas>
         <div class="brush-cursor" id="brushCursor" hidden></div>
         <div class="hit-toast" id="hitToast" hidden></div>
-      </div>
-
-      <div class="zoom-bar" aria-label="Масштаб холста">
-        <button class="zoom-btn" id="zoomOutBtn" type="button" title="Уменьшить">−</button>
-        <button class="zoom-btn wide" id="zoomFitBtn" type="button" title="Вписать в экран">Вписать</button>
-        <button class="zoom-btn" id="zoomInBtn" type="button" title="Увеличить">+</button>
-        <span id="zoomText">100%</span>
       </div>
 
       <div class="color-dock" aria-label="Цвета">
@@ -152,7 +127,12 @@
               <span>Время раунда, минут (0 — без ограничений)</span>
               <input id="roundMinInput" type="number" min="0" max="60" step="1" value="5">
             </label>
+            <label class="settings-check">
+              <input id="disableHintsInput" type="checkbox">
+              <span>Отключить подсказки</span>
+            </label>
             <p class="muted settings-note" id="settingsNote">Сменять словари и время может только создатель комнаты.</p>
+            <a class="link-button" href="index.html">Выйти из комнаты →</a>
           </div>
 
           <div class="settings-block">
@@ -190,13 +170,17 @@
 
   <div class="palette-popover card" id="palettePopover" hidden>
     <div class="popover-head">
-      <b>Цвет кисти</b>
+      <b>Палитра цвета кисти</b>
       <button class="popover-close" id="palettePopoverClose" type="button" aria-label="Закрыть">×</button>
     </div>
-    <div class="palette" id="popoverPresets"></div>
-    <div class="recent-title">Недавние</div>
-    <div class="palette" id="popoverRecent"></div>
-    <button class="button ghost small popover-more" id="paletteMoreBtn" type="button">Другие цвета</button>
+    <label class="palette-picker-label">
+      <span>Выберите цвет</span>
+      <input class="popover-color-input" id="popoverColorInput" type="color" value="#111827" aria-label="Цвет кисти">
+    </label>
+    <label class="palette-hex-label">
+      <span>HEX</span>
+      <input class="popover-hex-input" id="popoverHexInput" type="text" value="#111827" maxlength="7" spellcheck="false" aria-label="HEX цвет кисти">
+    </label>
   </div>
 
   <dialog class="modal" id="nameModal">
