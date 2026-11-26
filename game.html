@@ -91,10 +91,13 @@
     </section>
 
     <aside class="side-panel">
-      <div class="panel-tabs" id="panelTabs" role="tablist">
-        <button class="panel-tab active" data-tab="chat" type="button" role="tab">Чат</button>
-        <button class="panel-tab" data-tab="players" type="button" role="tab">Игроки <span class="tab-count" id="playersCount">1</span></button>
-        <button class="panel-tab" data-tab="settings" type="button" role="tab">Настройки</button>
+      <div class="panel-head">
+        <div class="panel-tabs" id="panelTabs" role="tablist">
+          <button class="panel-tab active" data-tab="chat" type="button" role="tab">Чат</button>
+          <button class="panel-tab" data-tab="players" type="button" role="tab">Игроки <span class="tab-count" id="playersCount">1</span></button>
+          <button class="panel-tab" data-tab="settings" type="button" role="tab">Настройки</button>
+        </div>
+        <a class="panel-leave" id="leaveRoomBtn" href="index.html" title="Выйти из комнаты" aria-label="Выйти из комнаты">🚪</a>
       </div>
 
       <section class="card tab-panel chat-panel" data-panel="chat">
@@ -194,6 +197,15 @@
 
   <script src="mqtt.min.js"></script>
   <script src="app.js"></script>
+  <script src="game-state.js"></script>
+  <script src="game-words.js"></script>
+  <script src="game-room.js"></script>
+  <script src="game-brushes.js"></script>
+  <script src="game-render.js"></script>
+  <script src="game-network.js"></script>
+  <script src="game-canvas.js"></script>
+  <script src="game-controls.js"></script>
+  <script src="game-ui.js"></script>
   <script src="game.js"></script>
 </body>
 </html>
