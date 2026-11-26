@@ -6,6 +6,9 @@
   <meta name="description" content="Кроко — онлайн-игра в крокодила: рисуй слова и угадывай рисунки вместе с друзьями.">
   <title>Кроко — онлайн-крокодил</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body data-page="home">
@@ -63,7 +66,7 @@
       <div class="section-heading">
         <div>
           <h2>Своя комната</h2>
-          <p class="muted">Вы станете создателем: сможете менять словарь и удалять нарушителей из игры.</p>
+          <p class="muted">Вы станете создателем: сможете менять словари и удалять нарушителей из игры.</p>
         </div>
       </div>
       <form class="create-form card" id="createForm">
@@ -72,8 +75,8 @@
           <input id="roomName" maxlength="24" placeholder="Например, Друзья" required>
         </label>
         <label>
-          <span>Словарь</span>
-          <select id="roomDictionary"></select>
+          <span>Словари (можно выбрать несколько)</span>
+          <div class="create-dicts" id="roomDictionaries"></div>
         </label>
         <button class="button primary" type="submit">Создать комнату</button>
       </form>

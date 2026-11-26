@@ -77,6 +77,54 @@
     });
   }
 
+  function getFingerprint() {
+    var parts = [
+      navigator.userAgent || '',
+      navigator.platform || '',
+      navigator.language || '',
+      (navigator.languages || []).join(','),
+      String(new Date().getTimezoneOffset()),
+      [screen.width, screen.height, screen.colorDepth, window.devicePixelRatio].join('x'),
+      String(navigator.hardwareConcurrency || ''),
+      String(navigator.deviceMemory || ''),
+      String(navigator.maxTouchPoints || 0)
+    ];
+    try {
+      var canvas = document.createElement('canvas');
+      canvas.width = 280; canvas.height = 60;
+      var ctx = canvas.getContext('2d');
+      ctx.textBaseline = 'top';
+      ctx.font = '16px Arial';
+      ctx.fillStyle = '#f60'; ctx.fillRect(1, 1, 220, 30);
+      ctx.fillStyle = '#069'; ctx.fillText('Кроко::fingerprint', 2, 2);
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.fillStyle = '#0f9'; ctx.fillText('🧩', 20, 20);
+      parts.push(canvas.toDataURL());
+    } catch (err) { /* canvas может быть недоступен */ }
+    try {
+      var gl = document.createElement('canvas').getContext('webgl');
+      if (gl) {
+        var debug = gl.getExtension('WEBGL_debug_renderer_info');
+        parts.push(String(gl.getParameter(gl.VERSION)));
+        if (debug) {
+          parts.push(String(gl.getParameter(debug.UNMASKED_VENDOR_WEBGL)));
+          parts.push(String(gl.getParameter(debug.UNMASKED_RENDERER_WEBGL)));
+        }
+      }
+    } catch (err) { /* WebGL может быть недоступен */ }
+    ['Arial', 'Roboto', 'Times New Roman', 'Courier New', 'Verdana'].forEach(function (font) {
+      try {
+        var span = document.createElement('span');
+        span.style.cssText = 'position:absolute;left:-9999px;font-size:72px;white-space:nowrap;font-family:' + font;
+        span.textContent = 'Кроко 123 abc';
+        document.body.appendChild(span);
+        parts.push(font + ':' + span.offsetWidth + 'x' + span.offsetHeight);
+        span.remove();
+      } catch (err) { /* ignore */ }
+    });
+    return 'fp-' + hash(parts.join('|'));
+  }
+
   function maskWord(word) {
     return String(word || '').replace(/\S/g, '•');
   }
@@ -106,6 +154,9 @@
         bgColor: '#ffffff',
         brushSize: 18,
         brushAlpha: 100,
+        smoothing: false,
+        shapeMode: 'square',
+        fingerprint: getFingerprint(),
         recentColors: ['#111827', '#ffffff', '#ef4444', '#38bdf8']
       };
       write(KEY_PROFILE, profile);
@@ -115,6 +166,9 @@
     if (!profile.bgColor) profile.bgColor = '#ffffff';
     if (!Number(profile.brushSize)) profile.brushSize = 18;
     if (!Number(profile.brushAlpha)) profile.brushAlpha = 100;
+    if (typeof profile.smoothing !== 'boolean') profile.smoothing = false;
+    if (!profile.shapeMode) profile.shapeMode = 'square';
+    if (!profile.fingerprint) profile.fingerprint = getFingerprint();
     return profile;
   }
 
@@ -142,7 +196,7 @@
   function findDictionary(id) {
     var all = getDictionaries();
     for (var i = 0; i < all.length; i++) if (all[i].id === id) return all[i];
-    return all[0];
+    return null;
   }
 
   function getRooms() {
@@ -207,6 +261,7 @@
     colorFor: colorFor,
     escapeHtml: escapeHtml,
     maskWord: maskWord,
+    getFingerprint: getFingerprint,
     getProfile: getProfile,
     setProfile: setProfile,
     getDictionaries: getDictionaries,

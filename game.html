@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Комната — Кроко</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body data-page="game">
@@ -15,7 +18,6 @@
       <span class="room-badge" id="roomBadge" hidden>вы создатель</span>
       <span class="live-dot"></span>
       <span><b id="onlineCount">1</b> онлайн</span>
-      <span class="dict-label">Словарь: <b id="dictName">Простые слова</b></span>
     </div>
     <div class="top-actions">
       <span class="connection" id="connectionText">подключаем...</span>
@@ -28,28 +30,31 @@
     <aside class="tool-rail" id="toolRail" aria-label="Инструменты рисования">
       <div class="rail-title">Кисти</div>
       <div class="tool-grid" id="toolGrid"></div>
+
       <div class="rail-sep"></div>
-      <label class="rail-label" for="sizeInput">Размер <b id="sizeText">18</b></label>
-      <input id="sizeInput" type="range" min="2" max="64" value="18">
-      <label class="rail-label" for="alphaInput">Прозрачность <b id="alphaText">100%</b></label>
-      <input id="alphaInput" type="range" min="5" max="100" value="100">
-      <div class="rail-hint">колесико мыши — размер</div>
-      <div class="rail-sep"></div>
-      <label class="rail-label" for="inkColor">Цвет кисти</label>
-      <div class="color-row">
-        <input id="inkColor" type="color" value="#111827" aria-label="Цвет кисти">
-        <input id="hexColor" type="text" value="#111827" maxlength="7" spellcheck="false" aria-label="HEX цвет кисти">
+      <div class="knob-block">
+        <span class="rail-label">Размер</span>
+        <button class="knob" id="sizeKnob" type="button" title="Тяните вверх или вниз. Клик — палитра цветов.">
+          <span id="sizeKnobValue">18</span>
+        </button>
+        <div class="knob-caption"><b id="sizeText">18 пикселей</b></div>
       </div>
-      <label class="rail-label" for="bgColor">Цвет фона</label>
-      <div class="color-row">
-        <input id="bgColor" type="color" value="#ffffff" aria-label="Цвет фона">
-        <input id="hexBg" type="text" value="#ffffff" maxlength="7" spellcheck="false" aria-label="HEX цвет фона">
+
+      <div class="knob-block">
+        <span class="rail-label">Прозрачность</span>
+        <button class="knob alpha-knob" id="alphaKnob" type="button" title="Тяните вверх или вниз. Клик — палитра цветов.">
+          <span id="alphaKnobValue">100</span>
+        </button>
+        <div class="knob-caption"><b id="alphaText">100% прозрачности</b></div>
       </div>
+
+      <button class="pipette-btn" id="pipetteBtn" type="button" title="Взять цвет с холста">💧 Пипетка</button>
+
       <div class="rail-sep"></div>
-      <div class="recent-title">Цвета</div>
-      <div class="palette" id="presetColors"></div>
-      <div class="recent-title">Недавние</div>
-      <div class="palette" id="recentColors"></div>
+      <button class="toggle-btn" id="smoothBtn" type="button" aria-pressed="false">Плавность: выкл</button>
+      <div class="rail-hint">сильнее сглаживание линий</div>
+
+      <div class="rail-sep"></div>
       <div class="rail-actions">
         <button class="rail-button" id="undoBtn" type="button" title="Отменить штрих (Ctrl+Z)">↶ Отменить</button>
         <button class="rail-button danger" id="clearBtn" type="button" title="Очистить холст">🗑 Очистить</button>
@@ -59,22 +64,51 @@
     <section class="stage">
       <div class="wordbar">
         <div class="word-block">
-          <span class="label">Слово</span>
+          <span class="label" id="wordSourceLabel">Словарь</span>
           <strong id="wordText">••••</strong>
-          <button class="link-button" id="hintBtn" type="button">подсказка</button>
         </div>
         <div class="round-info">
-          <span>Ход: <b id="drawerName">—</b></span>
+          <span class="drawer-chip"><span class="chip-dot"></span><b id="drawerName">—</b></span>
           <span>Раунд <b id="roundText">1</b></span>
-          <span class="timer" id="timerText">01:30</span>
+          <span class="timer" id="timerText">05:00</span>
         </div>
       </div>
 
-      <div class="canvas-wrap" id="canvasWrap">
+      <div class="canvas-wrap" id="canvasWrap" style="--canvas-zoom:1">
         <canvas id="drawCanvas" width="1000" height="750" aria-label="Общий холст"></canvas>
+        <canvas id="draftCanvas" width="1000" height="750" aria-hidden="true"></canvas>
         <div class="brush-cursor" id="brushCursor" hidden></div>
         <div class="hit-toast" id="hitToast" hidden></div>
       </div>
+
+      <div class="zoom-bar" aria-label="Масштаб холста">
+        <button class="zoom-btn" id="zoomOutBtn" type="button" title="Уменьшить">−</button>
+        <button class="zoom-btn wide" id="zoomFitBtn" type="button" title="Вписать в экран">Вписать</button>
+        <button class="zoom-btn" id="zoomInBtn" type="button" title="Увеличить">+</button>
+        <span id="zoomText">100%</span>
+      </div>
+
+      <div class="color-dock" aria-label="Цвета">
+        <div class="ink-blobs" id="inkBlobs"></div>
+        <button class="bg-square" id="bgSquare" type="button" title="Цвет фона">
+          <span class="bg-square-label">фон</span>
+        </button>
+        <button class="dock-tool" id="colorEditorBtn" type="button" title="Свои цвета">🎨</button>
+      </div>
+
+      <div class="color-editor card" id="colorEditor" hidden>
+        <div class="color-editor-row">
+          <label>Цвет кисти <input class="ink-color-input" type="color" value="#111827" aria-label="Цвет кисти"></label>
+          <input class="ink-hex-input" type="text" value="#111827" maxlength="7" spellcheck="false" aria-label="HEX цвет кисти">
+        </div>
+        <div class="color-editor-row">
+          <label>Цвет фона <input class="bg-color-input" type="color" value="#ffffff" aria-label="Цвет фона"></label>
+          <input class="bg-hex-input" type="text" value="#ffffff" maxlength="7" spellcheck="false" aria-label="HEX цвет фона">
+        </div>
+        <div class="recent-title">Недавние</div>
+        <div class="palette" id="editorRecent"></div>
+      </div>
+
       <div class="stage-footer">
         <span id="statusText">Подключаем к комнате...</span>
         <span class="muted" id="syncText">онлайн-синхронизация</span>
@@ -91,13 +125,17 @@
       <section class="card tab-panel chat-panel" data-panel="chat">
         <div class="messages" id="messages" aria-live="polite"></div>
         <form class="chat-form" id="chatForm">
-          <input id="chatInput" maxlength="100" placeholder="Напиши слово..." autocomplete="off">
+          <input id="chatInput" maxlength="140" placeholder="Напиши слово..." autocomplete="off">
           <button class="button primary small" type="submit">➤</button>
         </form>
       </section>
 
       <section class="card tab-panel" data-panel="players" hidden>
         <ul class="players" id="playersList"></ul>
+        <div class="blacklist-block">
+          <div class="settings-subhead">Чёрный список</div>
+          <div class="ban-list" id="banList"></div>
+        </div>
       </section>
 
       <section class="card tab-panel settings-panel" data-panel="settings" hidden>
@@ -105,20 +143,16 @@
           <div class="settings-block">
             <h3>Комната</h3>
             <p class="muted settings-line">Название: <b id="settingsRoomName">Простые</b></p>
+
+            <div class="settings-subhead">Словари в раунде</div>
+            <div class="dict-check-list" id="dictCheckList"></div>
+            <p class="muted settings-note" id="dictNote">Новый набор словарей начнёт действовать со следующего раунда.</p>
+
             <label class="settings-field">
-              <span>Словарь</span>
-              <select id="dictSelect" aria-label="Сменить словарь"></select>
+              <span>Время раунда, минут (0 — без ограничений)</span>
+              <input id="roundMinInput" type="number" min="0" max="60" step="1" value="5">
             </label>
-            <label class="settings-field">
-              <span>Время раунда</span>
-              <select id="roundMsSelect" aria-label="Время раунда">
-                <option value="60000">1 минута</option>
-                <option value="90000" selected>1,5 минуты</option>
-                <option value="120000">2 минуты</option>
-                <option value="180000">3 минуты</option>
-              </select>
-            </label>
-            <p class="muted settings-note" id="settingsNote">Сменять словарь и время может только создатель комнаты.</p>
+            <p class="muted settings-note" id="settingsNote">Сменять словари и время может только создатель комнаты.</p>
           </div>
 
           <div class="settings-block">
@@ -139,8 +173,8 @@
               <input id="settingsDictName" maxlength="30" placeholder="Например, Аниме">
             </label>
             <label class="settings-field">
-              <span>Слова (одно на строку или через запятую)</span>
-              <textarea id="settingsDictWords" rows="4" placeholder="Наруто&#10;Луффи&#10;Гитлер"></textarea>
+              <span>Слова или фразы (одно на строку)</span>
+              <textarea id="settingsDictWords" rows="4" placeholder="Наруто&#10;Гарри Поттер&#10;кот | мяч"></textarea>
             </label>
             <div class="inline-dict-actions">
               <button class="button primary small" id="settingsDictSave" type="button">Сохранить словарь</button>
@@ -153,6 +187,17 @@
       </section>
     </aside>
   </main>
+
+  <div class="palette-popover card" id="palettePopover" hidden>
+    <div class="popover-head">
+      <b>Цвет кисти</b>
+      <button class="popover-close" id="palettePopoverClose" type="button" aria-label="Закрыть">×</button>
+    </div>
+    <div class="palette" id="popoverPresets"></div>
+    <div class="recent-title">Недавние</div>
+    <div class="palette" id="popoverRecent"></div>
+    <button class="button ghost small popover-more" id="paletteMoreBtn" type="button">Другие цвета</button>
+  </div>
 
   <dialog class="modal" id="nameModal">
     <form method="dialog" id="nameForm">

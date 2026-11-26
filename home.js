@@ -15,7 +15,10 @@
     slug: K.DEFAULT_ROOM,
     name: 'Простые',
     creatorId: '',
+    creatorFingerprint: '',
     dictionary: { id: defaultDictionary.id, name: defaultDictionary.name, words: defaultDictionary.words },
+    dictionaryIds: [defaultDictionary.id],
+    dictionaryPool: [{ id: defaultDictionary.id, name: defaultDictionary.name, words: defaultDictionary.words.slice(0, 500) }],
     createdAt: 1,
     system: true
   };
@@ -26,11 +29,24 @@
   var statDicts = document.getElementById('statDicts');
   var form = document.getElementById('createForm');
   var nameInput = document.getElementById('roomName');
-  var dictSelect = document.getElementById('roomDictionary');
+  var dictBoxes = document.getElementById('roomDictionaries');
+
+  function dictionaryNames(room) {
+    if (Array.isArray(room.dictionaryIds) && room.dictionaryIds.length) {
+      var names = room.dictionaryIds.map(function (id) {
+        var dict = K.findDictionary(id);
+        return dict ? dict.name : '';
+      }).filter(Boolean);
+      if (names.length) return names.join(', ');
+    }
+    return room.dictionary ? room.dictionary.name : 'Простые слова';
+  }
 
   function fillDictionarySelect() {
-    dictSelect.innerHTML = K.getDictionaries().map(function (d) {
-      return '<option value="' + K.escapeHtml(d.id) + '">' + K.escapeHtml(d.name) + ' (' + d.words.length + ')</option>';
+    dictBoxes.innerHTML = K.getDictionaries().map(function (d, index) {
+      var checked = index === 0 ? ' checked' : '';
+      return '<label class="create-dict-check"><input type="checkbox" value="' + K.escapeHtml(d.id) + '"' + checked + '>' +
+        '<span>' + K.escapeHtml(d.name) + '</span><small>' + d.words.length + '</small></label>';
     }).join('');
   }
 
@@ -50,12 +66,12 @@
 
     list.innerHTML = rooms.map(function (room) {
       var count = online[room.slug] || 0;
-      var dictionary = room.dictionary ? room.dictionary.name : 'Простые слова';
+      var dictionaries = dictionaryNames(room);
       var own = room.creatorId === profile.id ? '<span class="player-tag">создатель</span>' : '';
       return '<a class="room-card" href="game.html?room=' + encodeURIComponent(room.slug) + '">' +
         '<span class="room-emoji">' + (room.system ? '🎨' : (room.creatorId === profile.id ? '⭐' : '👥')) + '</span>' +
         '<span class="room-info"><h3>' + K.escapeHtml(room.name) + ' ' + own + '</h3>' +
-        '<p>Словарь: ' + K.escapeHtml(dictionary) + ' · ссылка открыта для всех</p></span>' +
+        '<p>Словари: ' + K.escapeHtml(dictionaries) + ' · ссылка открыта для всех</p></span>' +
         '<span class="room-side"><span class="room-online"><span class="live-dot' + (count ? '' : ' off') + '"></span><b>' + count + '</b> онлайн</span>' +
         '<span class="button primary small">Войти</span></span></a>';
     }).join('');
@@ -108,14 +124,26 @@
     event.preventDefault();
     var name = nameInput.value.trim();
     if (!name) return;
-    var dictionary = K.findDictionary(dictSelect.value);
+    var ids = [].slice.call(dictBoxes.querySelectorAll('input:checked')).map(function (input) { return input.value; });
+    if (!ids.length && dictBoxes.querySelector('input')) ids = [dictBoxes.querySelector('input').value];
+    var dictionaries = ids.map(function (id) { return K.findDictionary(id); }).filter(Boolean);
+    if (!dictionaries.length) return;
     var slug = 'room-' + K.uid();
     var meta = {
       slug: slug,
       name: name,
       creatorId: profile.id,
       creatorName: profile.name,
-      dictionary: { id: dictionary.id, name: dictionary.name, words: dictionary.words.slice(0, 500) },
+      creatorFingerprint: profile.fingerprint || K.getFingerprint(),
+      dictionary: {
+        id: dictionaries[0].id,
+        name: dictionaries[0].name,
+        words: dictionaries[0].words.slice(0, 500)
+      },
+      dictionaryIds: dictionaries.map(function (d) { return d.id; }),
+      dictionaryPool: dictionaries.map(function (d) {
+        return { id: d.id, name: d.name, words: d.words.slice(0, 500) };
+      }),
       createdAt: Date.now()
     };
     metas[slug] = meta;
