@@ -533,7 +533,9 @@
         if (data.id === myId) return;
         delete presence[data.id];
       } else {
-        presence[data.id] = Object.assign({}, data, { ts: Date.now() });
+        var ts = Number(data.ts) || 0;
+        if (Date.now() - ts < 60000) presence[data.id] = Object.assign({}, data, { ts: ts });
+        else delete presence[data.id];
       }
       renderPlayers();
       renderWord();

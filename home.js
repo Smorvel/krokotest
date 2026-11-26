@@ -36,7 +36,11 @@
     var data = KROKO.parse(message);
     if (!data || !data.id) return;
     if (data.online === false) delete presence[data.id];
-    else presence[data.id] = { online: true, ts: Date.now() };
+    else {
+      var ts = Number(data.ts) || 0;
+      if (Date.now() - ts < 60000) presence[data.id] = { online: true, ts: ts };
+      else delete presence[data.id];
+    }
     render();
   });
 
