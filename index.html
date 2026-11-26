@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Кроко — одна общая комната, где рисуют и угадывают слова в реальном времени.">
+  <title>Кроко — рисуй и угадывай онлайн</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body data-page="home">
+  <header class="topbar">
+    <a class="brand" href="index.html"><span class="brand-mark">🎨</span><span>Кроко</span></a>
+    <nav class="topnav"><a href="#how">Как играть</a></nav>
+    <a class="button primary small" href="game.html">Играть</a>
+  </header>
+
+  <main class="home">
+    <section class="hero">
+      <div class="hero-copy">
+        <div class="eyebrow"><span class="live-dot"></span>одна комната · играют онлайн</div>
+        <h1>Рисуй слова.<br><span>Угадывай рисунки.</span></h1>
+        <p class="lead">Простая онлайн-игра в крокодила. Открой комнату «Простые», стань художником или угадывай, что рисуют другие — всё обновляется сразу у всех.</p>
+        <div class="hero-actions">
+          <a class="button primary" href="game.html">Играть сейчас</a>
+          <a class="button ghost" href="#how">Как играть</a>
+        </div>
+        <p class="online-line"><span class="live-dot"></span><span id="onlineText">Подключаем...</span></p>
+      </div>
+
+      <div class="hero-art" aria-hidden="true">
+        <div class="sheet">
+          <div class="sheet-top"><i></i><i></i><i></i></div>
+          <svg viewBox="0 0 320 210" class="doodle">
+            <path d="M40 150 Q90 40 150 120 T280 70" fill="none" stroke="#0f766e" stroke-width="9" stroke-linecap="round"/>
+            <circle cx="95" cy="155" r="34" fill="none" stroke="#38bdf8" stroke-width="6"/>
+            <circle cx="235" cy="80" r="18" fill="#34d399"/>
+          </svg>
+          <div class="sheet-word">слово: <b>•••••</b></div>
+        </div>
+        <div class="bubble">угадал! +10</div>
+      </div>
+    </section>
+
+    <section class="room-section" id="room">
+      <div class="section-heading">
+        <div>
+          <h2>Комната</h2>
+          <p class="muted">Никаких списков и лишних настроек — только одна общая игра.</p>
+        </div>
+      </div>
+
+      <a class="room-card" href="game.html">
+        <div class="room-emoji">🎨</div>
+        <div class="room-info">
+          <h3>Простые</h3>
+          <p>Лёгкие слова, быстрые раунды. Художник меняется после каждого слова.</p>
+        </div>
+        <div class="room-side">
+          <span class="room-online"><span class="live-dot"></span><b id="roomOnline">—</b> онлайн</span>
+          <span class="button primary small">Войти</span>
+        </div>
+      </a>
+    </section>
+
+    <section class="how" id="how">
+      <h2>Как играть</h2>
+      <div class="steps">
+        <article><span>1</span><h3>Открой комнату</h3><p>Ссылка одна на всех: игроки собираются автоматически.</p></article>
+        <article><span>2</span><h3>Рисуй или угадывай</h3><p>У художника слово видно, остальные видят только точки.</p></article>
+        <article><span>3</span><h3>Получай очки</h3><p>Первый угадавший получает 10 очков, и раунд начинается заново.</p></article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">Кроко · учебный онлайн-прототип · без регистрации</footer>
+
+  <script src="mqtt.min.js"></script>
+  <script src="app.js"></script>
+  <script src="home.js"></script>
+</body>
+</html>

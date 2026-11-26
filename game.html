@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Простые — Кроко</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body data-page="game">
+  <header class="topbar game-topbar">
+    <a class="brand" href="index.html"><span class="brand-mark">🎨</span><span>Кроко</span></a>
+    <div class="room-meta">
+      <strong>Простые</strong>
+      <span class="live-dot"></span>
+      <span><b id="onlineCount">1</b> онлайн</span>
+    </div>
+    <div class="top-actions">
+      <span class="connection" id="connectionText">подключаем...</span>
+      <a class="button ghost small" href="index.html">Выйти</a>
+    </div>
+  </header>
+
+  <main class="game-layout">
+    <aside class="panel left-panel">
+      <section class="card word-card">
+        <span class="label">Слово</span>
+        <strong id="wordText">••••</strong>
+        <button class="link-button" id="hintButton" type="button">подсказка</button>
+        <div class="round-line"><span>Раунд <b id="roundText">1</b></span><span>Время <b id="timerText">01:30</b></span></div>
+      </section>
+
+      <section class="card grow">
+        <h3>Игроки <span class="count" id="playersCount">1</span></h3>
+        <ul class="players" id="playersList"></ul>
+      </section>
+
+      <section class="card">
+        <h3>Очки</h3>
+        <div class="scores" id="scoresList"></div>
+      </section>
+    </aside>
+
+    <section class="canvas-column">
+      <div class="canvas-frame" id="canvasFrame">
+        <canvas id="drawCanvas" width="1000" height="640" aria-label="Общий холст"></canvas>
+        <div class="brush-cursor" id="brushCursor" hidden></div>
+
+        <div class="canvas-note" id="canvasNote" hidden>
+          <span>👀</span>
+          <strong id="noteTitle">Сейчас рисует соперник</strong>
+          <p class="muted">Пиши варианты в чат справа</p>
+        </div>
+
+        <div class="toolbar" id="toolbar" role="toolbar" aria-label="Инструменты">
+          <button class="tool active" id="brushButton" type="button" title="Кисти">🖌️</button>
+          <button class="tool" id="pipetteButton" type="button" title="Пипетка">💧</button>
+          <div class="tool-divider"></div>
+          <button class="tool" id="undoButton" type="button" title="Отменить штрих (Ctrl+Z)">↶</button>
+          <button class="tool" id="eraserButton" type="button" title="Ластик">🧽</button>
+          <button class="tool danger" id="clearButton" type="button" title="Очистить холст">🗑️</button>
+          <div class="tool-divider"></div>
+          <label class="size-control" title="Размер кисти">
+            <span id="sizeText">18</span>
+            <input id="sizeInput" type="range" min="2" max="64" value="18" aria-label="Размер кисти">
+          </label>
+          <button class="swatch" id="colorSwatch" type="button" title="Цвет"></button>
+          <button class="swatch bg-swatch" id="bgSwatch" type="button" title="Цвет фона"><small>фон</small></button>
+        </div>
+
+        <div class="popover brush-popover" id="brushPopover" hidden>
+          <div class="popover-title">Кисти</div>
+          <div class="brush-grid" id="brushGrid"></div>
+        </div>
+        <div class="popover color-popover" id="colorPopover" hidden>
+          <div class="popover-title">Цвет</div>
+          <div class="color-grid" id="colorGrid"></div>
+        </div>
+        <div class="popover bg-popover" id="bgPopover" hidden>
+          <div class="popover-title">Фон</div>
+          <div class="color-grid" id="bgGrid"></div>
+        </div>
+      </div>
+      <div class="canvas-footer">
+        <span id="statusText">Подключаем к комнате...</span>
+        <span class="muted" id="syncText">онлайн-синхронизация</span>
+      </div>
+    </section>
+
+    <aside class="panel chat-panel">
+      <section class="card grow chat-card">
+        <h3>Чат</h3>
+        <div class="messages" id="messages" aria-live="polite"></div>
+        <form class="chat-form" id="chatForm">
+          <input id="chatInput" maxlength="100" placeholder="Напиши слово..." autocomplete="off">
+          <button class="button primary small" type="submit">➤</button>
+        </form>
+      </section>
+    </aside>
+  </main>
+
+  <dialog class="modal" id="nameModal">
+    <form method="dialog" id="nameForm">
+      <h3>Как тебя зовут?</h3>
+      <p class="muted">Имя увидят другие игроки. Оно сохранится в этом браузере.</p>
+      <input id="nameInput" maxlength="20" placeholder="Например, Аня" required>
+      <button class="button primary small" value="default" type="submit">Войти</button>
+    </form>
+  </dialog>
+
+  <script src="mqtt.min.js"></script>
+  <script src="app.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
