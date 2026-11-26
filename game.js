@@ -28,7 +28,7 @@
     { id: 'brush', name: 'Стандартная кисть', icon: '<path d="M4 18c2.2.6 4-.2 5-2 .8-1.5 1-3 2.5-4.5L16 7l3 3-5.5 5.5C12 16 10.5 16.2 9 17c-1.5 1-3.3 1.8-5 1Z"/>' },
     { id: 'soft', name: 'Мягкая кисть', icon: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/>' },
     { id: 'tablet', name: 'Кисть для планшета', icon: '<path d="M4 19c2-6 3-9 5-9s2 7 4 7 2-9 4-9 2 6 3 11"/><path d="M8 4h8l1 3H7l1-3Z"/>' },
-    { id: 'shape', name: 'Фигурная кисть', icon: '<rect x="4" y="4" width="16" height="16" rx="1"/><path d="M8 12h8"/>' },
+    { id: 'shape', name: 'Фигуры', icon: '<rect x="4" y="4" width="16" height="16" rx="1"/><path d="M8 12h8"/>' },
     { id: 'fill', name: 'Заливка', icon: '<path d="m12 3 8 8-8 8-8-8 8-8Z"/><path d="M20 11c-2 2-3 3-3 4a2 2 0 0 0 4 0c0-1-1-2-1-4Z"/>' },
     { sep: true },
     { id: 'eraser', name: 'Ластик', icon: '<path d="m4 16 7-7 7 7-4 4H8l-4-4Z"/><path d="m8 12 5 5"/>' }
@@ -57,6 +57,8 @@
   var draftFrame = null;
   var knobDrag = null;
   var stampCache = {};
+  var smoothPoint = null;
+  var lastCursorEvent = null;
 
   var tool = {
     current: 'brush',
@@ -581,8 +583,41 @@
     };
   }
 
+  function clockMs() {
+    return (window.performance && performance.now) ? performance.now() : Date.now();
+  }
+
+  function resetSmoothing(point) {
+    smoothPoint = {
+      x: point.x, y: point.y,
+      rawX: point.x, rawY: point.y,
+      t: clockMs()
+    };
+  }
+
+  function smoothInputPoint(raw, forceEnd) {
+    var current = smoothPoint;
+    if (!current) {
+      resetSmoothing(raw);
+      return raw;
+    }
+    var elapsed = (clockMs() - current.t) / 1000;
+    var dt = Math.max(0.004, Math.min(0.05, elapsed > 0 ? elapsed : 0.016));
+    var speed = Math.hypot(raw.x - current.rawX, raw.y - current.rawY) / dt;
+    var cutoff = 1 + speed / 260;
+    var alpha = forceEnd ? 1 : 1 - Math.exp(-dt * 2 * Math.PI * cutoff);
+    var point = {
+      x: current.x + (raw.x - current.x) * alpha,
+      y: current.y + (raw.y - current.y) * alpha,
+      p: raw.p,
+      t: raw.t
+    };
+    smoothPoint = { x: point.x, y: point.y, rawX: raw.x, rawY: raw.y, t: clockMs() };
+    return point;
+  }
+
   function isShape(toolId) {
-    return toolId === 'line' || toolId === 'rect' || toolId === 'ellipse';
+    return toolId === 'shape';
   }
 
   function polyline(context, points) {
@@ -796,23 +831,25 @@
 
     if (stroke.tool === 'shape') {
       var mode = SHAPE_LABELS[stroke.shapeMode] ? stroke.shapeMode : tool.shapeMode;
-      var shapeStamp = cachedStamp('shape|' + mode + '|' + color + '|' + alpha.toFixed(2) + '|' + size, size + 2, function (c, center) {
-        c.fillStyle = color;
-        c.globalAlpha = alpha;
-        if (mode === 'circle') {
-          c.beginPath();
-          c.arc(center, center, size / 2, 0, Math.PI * 2);
-          c.fill();
-        } else if (mode === 'stripe') {
-          c.fillRect(center - size / 2, center - size * 0.14, size, size * 0.28);
-        } else {
-          c.fillRect(center - size / 2, center - size / 2, size, size);
-        }
-      });
-      context.globalAlpha = 1;
-      stampAlong(points, Math.max(4, size * 1.05), function (x, y) {
-        context.drawImage(shapeStamp.canvas, x - shapeStamp.half, y - shapeStamp.half);
-      });
+      var shapeStart = points[0];
+      var shapeEnd = points[points.length - 1];
+      var dx = shapeEnd.x - shapeStart.x;
+      var dy = shapeEnd.y - shapeStart.y;
+      context.lineWidth = Math.max(2, size);
+      context.beginPath();
+      if (mode === 'stripe') {
+        context.moveTo(shapeStart.x, shapeStart.y);
+        context.lineTo(shapeEnd.x, shapeEnd.y);
+        context.stroke();
+      } else if (mode === 'circle') {
+        var radius = Math.max(2, Math.hypot(dx, dy) / 2);
+        context.arc((shapeStart.x + shapeEnd.x) / 2, (shapeStart.y + shapeEnd.y) / 2, radius, 0, Math.PI * 2);
+        context.stroke();
+      } else {
+        var side = Math.max(2, Math.abs(dx), Math.abs(dy));
+        context.rect(shapeStart.x, shapeStart.y, dx < 0 ? -side : side, dy < 0 ? -side : side);
+        context.stroke();
+      }
       context.restore();
       return;
     }
@@ -915,16 +952,24 @@
 
   function updateCursor(event) {
     if (isBannedMe() || !isDrawer()) { el.cursor.hidden = true; return; }
+    lastCursorEvent = { clientX: event.clientX, clientY: event.clientY };
     var rect = el.wrap.getBoundingClientRect();
     var scale = rect.width / canvas.width;
-    var diameter = Math.max(4, Math.round(tool.size * cursorFactor() * scale));
+    var picking = tool.current === 'pipette';
+    var diameter = picking ? 30 : Math.max(4, Math.round(tool.size * cursorFactor() * scale));
     el.cursor.style.width = diameter + 'px';
     el.cursor.style.height = diameter + 'px';
     el.cursor.style.left = (event.clientX - rect.left) + 'px';
     el.cursor.style.top = (event.clientY - rect.top) + 'px';
-    el.cursor.style.borderColor = tool.current === 'eraser' ? '#fb7185' : '#111827';
-    el.cursor.className = 'brush-cursor shape-' + (tool.current === 'shape' ? tool.shapeMode : 'circle');
+    el.cursor.style.borderColor = picking ? '#34d399' : (tool.current === 'eraser' ? '#fb7185' : '#111827');
+    el.cursor.style.borderStyle = picking ? 'dashed' : 'solid';
+    el.cursor.className = 'brush-cursor ' + (picking ? 'pipette-cursor' : 'shape-' + (tool.current === 'shape' ? tool.shapeMode : 'circle'));
+    el.cursor.textContent = picking ? '💧' : '';
     el.cursor.hidden = false;
+  }
+
+  function refreshCursor() {
+    if (lastCursorEvent) updateCursor(lastCursorEvent);
   }
 
   /* ---------- Интерфейс ---------- */
@@ -994,11 +1039,7 @@
     el.drawer.textContent = drawer ? drawer.name : '—';
     el.round.textContent = state.round;
     el.wordSourceLabel.textContent = getDictionary().name;
-    el.word.innerHTML = displayCharacters(word()).map(function (item) {
-      if (item.space) return '<span class="word-space">' + K.escapeHtml(item.char) + '</span>';
-      if (item.plain) return K.escapeHtml(item.char);
-      return '<span class="letter-circle' + (item.masked ? ' masked' : '') + '">' + K.escapeHtml(item.char) + '</span>';
-    }).join('');
+    el.word.textContent = displayCharacters(word()).map(function (item) { return item.char; }).join('');
   }
 
   function swatchButton(color, className) {
@@ -1336,6 +1377,7 @@
       setInk('#' + [pixel[0], pixel[1], pixel[2]].map(function (v) { return ('0' + v.toString(16)).slice(-2); }).join(''));
       tool.current = previousTool;
       renderTools();
+      refreshCursor();
       return;
     }
 
@@ -1361,6 +1403,8 @@
 
     drawing = true;
     try { canvas.setPointerCapture(event.pointerId); } catch (err) { /* синтетические события */ }
+    var startPoint = pointFromEvent(event);
+    resetSmoothing(startPoint);
     localDraft = {
       id: K.uid(),
       owner: myId,
@@ -1371,7 +1415,7 @@
       smooth: tool.smooth,
       shapeMode: tool.shapeMode,
       bg: tool.bg,
-      points: [pointFromEvent(event)]
+      points: [startPoint]
     };
     scheduleDrafts();
   });
@@ -1380,7 +1424,8 @@
     updateCursor(event);
     if (!drawing || !localDraft) return;
     event.preventDefault();
-    var next = pointFromEvent(event);
+    var raw = pointFromEvent(event);
+    var next = tool.smooth && !isShape(tool.current) ? smoothInputPoint(raw, false) : raw;
     if (isShape(tool.current)) {
       localDraft.points = [localDraft.points[0], next];
     } else {
@@ -1399,9 +1444,18 @@
     if (!drawing) return;
     drawing = false;
     if (localDraft) {
-      if (event && event.type === 'pointerup' && !isShape(tool.current)) {
-        localDraft.points.push(pointFromEvent(event));
+      if (event && event.type === 'pointerup') {
+        var rawEnd = pointFromEvent(event);
+        var endPoint = localDraft.smooth && !isShape(localDraft.tool)
+          ? smoothInputPoint(rawEnd, true) : rawEnd;
+        if (localDraft.tool === 'shape') {
+          if (localDraft.points.length < 2) localDraft.points.push(endPoint);
+          else localDraft.points[localDraft.points.length - 1] = endPoint;
+        } else {
+          localDraft.points.push(endPoint);
+        }
       }
+      smoothPoint = null;
       state.strokes.push(localDraft);
       state.strokes = state.strokes.slice(-80);
       localDraft = null;
@@ -1532,6 +1586,7 @@
       if (tool.current !== 'pipette') previousTool = tool.current;
     }
     renderTools();
+    refreshCursor();
   });
 
   function rememberColor(color) {
@@ -1582,6 +1637,7 @@
     if (tool.current !== 'pipette') previousTool = tool.current;
     tool.current = 'pipette';
     renderTools();
+    refreshCursor();
   });
 
   el.smoothBtn.addEventListener('click', function () {
@@ -1589,6 +1645,7 @@
     profile.smoothing = tool.smooth;
     K.setProfile(profile);
     renderTools();
+    refreshCursor();
   });
 
   el.undo.addEventListener('click', function () {
