@@ -1,17 +1,57 @@
-/* Общие функции: профиль, слова и MQTT-подключение. */
+/* Общие функции Кроко: профиль, словари, комнаты и MQTT. */
 (function () {
   'use strict';
 
   var BROKER = 'wss://broker.hivemq.com:8884/mqtt';
-  var BASE = 'krokotest/simple/v1';
+  var ROOT = 'krokotest/v2/rooms';
+  var DEFAULT_ROOM = 'prostye';
   var KEY_PROFILE = 'krokotest.profile.v1';
+  var KEY_DICTS = 'krokotest.dictionaries.v1';
+  var KEY_ROOMS = 'krokotest.rooms.v1';
 
-  var WORDS = [
-    'дом', 'кот', 'солнце', 'дерево', 'мяч', 'книга', 'чашка', 'велосипед',
-    'мост', 'облако', 'пицца', 'гитара', 'школа', 'друг', 'собака', 'птица',
-    'рыба', 'цветок', 'дождь', 'снег', 'зима', 'лето', 'город', 'окно',
-    'стул', 'ключ', 'часы', 'зеркало', 'бабочка', 'карандаш', 'молоко', 'хлеб',
-    'компьютер', 'телефон'
+  var BUILTIN_DICTIONARIES = [
+    {
+      id: 'easy', name: 'Простые слова', words: [
+        'дом', 'кот', 'солнце', 'дерево', 'мяч', 'книга', 'чашка', 'велосипед',
+        'мост', 'облако', 'пицца', 'гитара', 'школа', 'друг', 'собака', 'птица',
+        'рыба', 'цветок', 'дождь', 'снег', 'зима', 'лето', 'город', 'окно',
+        'стул', 'ключ', 'часы', 'зеркало', 'бабочка', 'карандаш', 'молоко', 'хлеб',
+        'компьютер', 'телефон', 'кофе', 'торт', 'кровь', 'плеер', 'фонарь', 'лестница'
+      ]
+    },
+    {
+      id: 'animals', name: 'Животные', words: [
+        'лев', 'тигр', 'слон', 'жираф', 'зебра', 'медведь', 'волк', 'лиса',
+        'заяц', 'еж', 'белка', 'кенгуру', 'коала', 'панда', 'обезьяна', 'попугай',
+        'орёл', 'пингвин', 'дельфин', 'кит', 'акула', 'осьминог', 'черепаха', 'змея',
+        'лягушка', 'бабочка', 'жук', 'паук', 'муравей', 'пчела', 'комар', 'улитка'
+      ]
+    },
+    {
+      id: 'food', name: 'Еда и напитки', words: [
+        'борщ', 'пельмени', 'пицца', 'суши', 'гамбургер', 'хот-дог', 'шаурма', 'плов',
+        'паста', 'лапша', 'салат', 'сыр', 'хлеб', 'масло', 'йогурт', 'молоко',
+        'кофе', 'чай', 'сок', 'лимонад', 'торт', 'пирог', 'печенье', 'мороженое',
+        'шоколад', 'конфета', 'яблоко', 'банан', 'апельсин', 'вино', 'пиво', 'водка'
+      ]
+    },
+    {
+      id: 'movies', name: 'Фильмы и сериалы', words: [
+        'Титаник', 'Аватар', 'Гарри Поттер', 'Властелин колец', 'Звёздные войны',
+        'Марсианин', 'Интерстеллар', 'Начало', 'Матрица', 'Терминатор',
+        'Кинг-Конг', 'Джурассик Парк', 'Форрест Гамп', 'Зеленая миля', 'Бойцовский клуб',
+        'Один дома', 'Гонщик', 'Рик и Морти', 'Друзья', 'Клан Сопрано'
+      ]
+    },
+    {
+      id: 'hard', name: 'Сложные слова', words: [
+        'акварель', 'амфибия', 'бастран', 'вектор', 'гравитация', 'дельтаплан',
+        'ехидна', 'журнал', 'зенит', 'иероглиф', 'калейдоскоп', 'лабиринт',
+        'метеорит', 'небула', 'орбита', 'панорама', 'парадокс', 'квант',
+        'силуэт', 'телескоп', 'ультрафиолет', 'фрактал', 'хамелеон', 'циклон',
+        'чертёж', 'шарнир', 'эволюция', 'юпитер', 'якорь', 'архипелаг'
+      ]
+    }
   ];
 
   var COLORS = ['#34d399', '#38bdf8', '#a78bfa', '#f472b6', '#fbbf24', '#fb923c', '#22d3ee', '#f87171'];
@@ -41,24 +81,76 @@
     return String(word || '').replace(/\S/g, '•');
   }
 
+  function read(key, fallback) {
+    try {
+      var raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
+    } catch (err) {
+      return fallback;
+    }
+  }
+
+  function write(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (err) { /* приватный режим */ }
+  }
+
   function getProfile() {
-    var profile = null;
-    try { profile = JSON.parse(localStorage.getItem(KEY_PROFILE) || 'null'); } catch (err) { profile = null; }
+    var profile = read(KEY_PROFILE, null);
     if (!profile || !profile.id) {
       profile = {
         id: uid(),
         name: 'Игрок ' + (10 + hash(navigator.userAgent) % 90),
         color: colorFor(navigator.userAgent),
-        named: false
-      }
-      try { localStorage.setItem(KEY_PROFILE, JSON.stringify(profile)); } catch (err) { /* приватный режим */ }
+        named: false,
+        recentColors: ['#111827', '#ffffff', '#ef4444', '#38bdf8']
+      };
+      write(KEY_PROFILE, profile);
     }
+    if (!Array.isArray(profile.recentColors)) profile.recentColors = ['#111827', '#ffffff', '#ef4444', '#38bdf8'];
     return profile;
   }
 
   function setProfile(profile) {
     profile.named = true;
-    try { localStorage.setItem(KEY_PROFILE, JSON.stringify(profile)); } catch (err) { /* приватный режим */ }
+    write(KEY_PROFILE, profile);
+  }
+
+  function getDictionaries() {
+    var custom = read(KEY_DICTS, []);
+    if (!Array.isArray(custom)) custom = [];
+    return BUILTIN_DICTIONARIES.concat(custom.filter(function (d) {
+      return d && d.id && d.name && Array.isArray(d.words) && d.words.length;
+    }));
+  }
+
+  function getCustomDictionaries() {
+    return read(KEY_DICTS, []);
+  }
+
+  function saveCustomDictionaries(list) {
+    write(KEY_DICTS, list);
+  }
+
+  function findDictionary(id) {
+    var all = getDictionaries();
+    for (var i = 0; i < all.length; i++) if (all[i].id === id) return all[i];
+    return all[0];
+  }
+
+  function getRooms() {
+    var rooms = read(KEY_ROOMS, []);
+    if (!Array.isArray(rooms)) rooms = [];
+    return rooms;
+  }
+
+  function saveRoom(meta) {
+    var rooms = getRooms().filter(function (r) { return r.slug !== meta.slug; });
+    rooms.unshift(meta);
+    write(KEY_ROOMS, rooms.slice(0, 30));
+  }
+
+  function topic(room, suffix) {
+    return ROOT + '/' + room + '/' + suffix;
   }
 
   function connect(clientId, willMessage) {
@@ -75,9 +167,9 @@
     return window.mqtt.connect(BROKER, options);
   }
 
-  function publish(client, topic, value, retain) {
+  function publish(client, topicName, value, retain) {
     if (!client || !client.connected) return false;
-    client.publish(topic, JSON.stringify(value), { qos: 1, retain: !!retain });
+    client.publish(topicName, JSON.stringify(value), { qos: 1, retain: !!retain });
     return true;
   }
 
@@ -85,13 +177,23 @@
     try { return JSON.parse(message.toString()); } catch (err) { return null; }
   }
 
+  function wordsFromText(text) {
+    return String(text || '')
+      .split(/[\n,;]+/)
+      .map(function (w) { return w.trim(); })
+      .filter(function (w, i, arr) { return w && w.length <= 60 && arr.indexOf(w) === i; })
+      .slice(0, 500);
+  }
+
+  function isBanned(state, id) {
+    return !!(state && Array.isArray(state.bans) && state.bans.indexOf(id) >= 0);
+  }
+
   window.KROKO = {
     BROKER: BROKER,
-    BASE: BASE,
-    TOPIC_STATE: BASE + '/state',
-    TOPIC_PRESENCE: BASE + '/presence/',
-    TOPIC_DRAFT: BASE + '/draft/',
-    WORDS: WORDS,
+    ROOT: ROOT,
+    DEFAULT_ROOM: DEFAULT_ROOM,
+    BUILTIN_DICTIONARIES: BUILTIN_DICTIONARIES,
     uid: uid,
     hash: hash,
     colorFor: colorFor,
@@ -99,8 +201,17 @@
     maskWord: maskWord,
     getProfile: getProfile,
     setProfile: setProfile,
+    getDictionaries: getDictionaries,
+    getCustomDictionaries: getCustomDictionaries,
+    saveCustomDictionaries: saveCustomDictionaries,
+    findDictionary: findDictionary,
+    getRooms: getRooms,
+    saveRoom: saveRoom,
+    topic: topic,
     connect: connect,
     publish: publish,
-    parse: parse
+    parse: parse,
+    wordsFromText: wordsFromText,
+    isBanned: isBanned
   };
 })();

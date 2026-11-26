@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Простые — Кроко</title>
+  <title>Комната — Кроко</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>">
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -11,84 +11,81 @@
   <header class="topbar game-topbar">
     <a class="brand" href="index.html"><span class="brand-mark">🎨</span><span>Кроко</span></a>
     <div class="room-meta">
-      <strong>Простые</strong>
+      <strong id="roomTitle">Простые</strong>
+      <span class="room-badge" id="roomBadge" hidden>вы создатель</span>
       <span class="live-dot"></span>
       <span><b id="onlineCount">1</b> онлайн</span>
+      <span class="dict-label">Словарь: <b id="dictName">Простые слова</b></span>
+      <select id="dictSelect" class="dict-select" hidden aria-label="Сменить словарь"></select>
     </div>
     <div class="top-actions">
       <span class="connection" id="connectionText">подключаем...</span>
+      <a class="button ghost small" href="cabinet.html">Кабинет</a>
       <a class="button ghost small" href="index.html">Выйти</a>
     </div>
   </header>
 
-  <main class="game-layout">
-    <aside class="panel left-panel">
-      <section class="card word-card">
-        <span class="label">Слово</span>
-        <strong id="wordText">••••</strong>
-        <button class="link-button" id="hintButton" type="button">подсказка</button>
-        <div class="round-line"><span>Раунд <b id="roundText">1</b></span><span>Время <b id="timerText">01:30</b></span></div>
-      </section>
-
-      <section class="card grow">
-        <h3>Игроки <span class="count" id="playersCount">1</span></h3>
-        <ul class="players" id="playersList"></ul>
-      </section>
-
-      <section class="card">
-        <h3>Очки</h3>
-        <div class="scores" id="scoresList"></div>
-      </section>
+  <main class="game-shell">
+    <aside class="tool-rail" id="toolRail" aria-label="Инструменты рисования">
+      <div class="rail-title">Кисти</div>
+      <div class="tool-grid" id="toolGrid"></div>
+      <div class="rail-sep"></div>
+      <label class="rail-label" for="sizeInput">Размер <b id="sizeText">18</b></label>
+      <input id="sizeInput" type="range" min="2" max="64" value="18">
+      <div class="rail-sep"></div>
+      <label class="rail-label" for="inkColor">Цвет</label>
+      <div class="color-row">
+        <input id="inkColor" type="color" value="#111827" aria-label="Цвет кисти">
+        <input id="hexColor" type="text" value="#111827" maxlength="7" spellcheck="false" aria-label="HEX цвет кисти">
+      </div>
+      <label class="rail-label" for="bgColor">Фон</label>
+      <div class="color-row">
+        <input id="bgColor" type="color" value="#ffffff" aria-label="Цвет фона">
+        <input id="hexBg" type="text" value="#ffffff" maxlength="7" spellcheck="false" aria-label="HEX цвет фона">
+      </div>
+      <div class="recent-title">Недавние</div>
+      <div class="recent-colors" id="recentColors"></div>
+      <div class="rail-actions">
+        <button class="rail-button" id="undoBtn" type="button" title="Отменить штрих (Ctrl+Z)">↶ Отменить</button>
+        <button class="rail-button danger" id="clearBtn" type="button" title="Очистить холст">🗑 Очистить</button>
+      </div>
     </aside>
 
-    <section class="canvas-column">
-      <div class="canvas-frame" id="canvasFrame">
-        <canvas id="drawCanvas" width="1000" height="640" aria-label="Общий холст"></canvas>
-        <div class="brush-cursor" id="brushCursor" hidden></div>
-
-        <div class="canvas-note" id="canvasNote" hidden>
-          <span>👀</span>
-          <strong id="noteTitle">Сейчас рисует соперник</strong>
-          <p class="muted">Пиши варианты в чат справа</p>
+    <section class="stage">
+      <div class="wordbar">
+        <div class="word-block">
+          <span class="label">Слово</span>
+          <strong id="wordText">••••</strong>
+          <button class="link-button" id="hintBtn" type="button">подсказка</button>
         </div>
-
-        <div class="toolbar" id="toolbar" role="toolbar" aria-label="Инструменты">
-          <button class="tool active" id="brushButton" type="button" title="Кисти">🖌️</button>
-          <button class="tool" id="pipetteButton" type="button" title="Пипетка">💧</button>
-          <div class="tool-divider"></div>
-          <button class="tool" id="undoButton" type="button" title="Отменить штрих (Ctrl+Z)">↶</button>
-          <button class="tool" id="eraserButton" type="button" title="Ластик">🧽</button>
-          <button class="tool danger" id="clearButton" type="button" title="Очистить холст">🗑️</button>
-          <div class="tool-divider"></div>
-          <label class="size-control" title="Размер кисти">
-            <span id="sizeText">18</span>
-            <input id="sizeInput" type="range" min="2" max="64" value="18" aria-label="Размер кисти">
-          </label>
-          <button class="swatch" id="colorSwatch" type="button" title="Цвет"></button>
-          <button class="swatch bg-swatch" id="bgSwatch" type="button" title="Цвет фона"><small>фон</small></button>
-        </div>
-
-        <div class="popover brush-popover" id="brushPopover" hidden>
-          <div class="popover-title">Кисти</div>
-          <div class="brush-grid" id="brushGrid"></div>
-        </div>
-        <div class="popover color-popover" id="colorPopover" hidden>
-          <div class="popover-title">Цвет</div>
-          <div class="color-grid" id="colorGrid"></div>
-        </div>
-        <div class="popover bg-popover" id="bgPopover" hidden>
-          <div class="popover-title">Фон</div>
-          <div class="color-grid" id="bgGrid"></div>
+        <div class="round-info">
+          <span>Ход: <b id="drawerName">—</b></span>
+          <span>Раунд <b id="roundText">1</b></span>
+          <span class="timer" id="timerText">01:30</span>
         </div>
       </div>
-      <div class="canvas-footer">
+
+      <div class="canvas-wrap" id="canvasWrap">
+        <canvas id="drawCanvas" width="1000" height="750" aria-label="Общий холст"></canvas>
+        <div class="brush-cursor" id="brushCursor" hidden></div>
+        <div class="canvas-overlay" id="canvasOverlay">
+          <span>👀</span>
+          <strong id="overlayTitle">Сейчас рисует соперник</strong>
+          <p class="muted" id="overlayText">Пиши варианты в чат справа</p>
+        </div>
+      </div>
+      <div class="stage-footer">
         <span id="statusText">Подключаем к комнате...</span>
         <span class="muted" id="syncText">онлайн-синхронизация</span>
       </div>
     </section>
 
-    <aside class="panel chat-panel">
-      <section class="card grow chat-card">
+    <aside class="side-panel">
+      <section class="card players-card">
+        <h3>Игроки <span class="count" id="playersCount">1</span></h3>
+        <ul class="players" id="playersList"></ul>
+      </section>
+      <section class="card chat-card grow">
         <h3>Чат</h3>
         <div class="messages" id="messages" aria-live="polite"></div>
         <form class="chat-form" id="chatForm">

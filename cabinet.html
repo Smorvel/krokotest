@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Личный кабинет — Кроко</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body data-page="cabinet">
+  <header class="topbar">
+    <a class="brand" href="index.html"><span class="brand-mark">🎨</span><span>Кроко</span></a>
+    <nav class="topnav"><a href="index.html">Комнаты</a><a href="game.html">Играть</a></nav>
+    <a class="button ghost small" href="index.html">На главную</a>
+  </header>
+
+  <main class="cabinet">
+    <div class="cabinet-head">
+      <h1>Личный кабинет</h1>
+      <p class="muted">Имя и словари хранятся в этом браузере. Свои словари можно выбрать при создании комнаты или в уже открытой комнате.</p>
+    </div>
+
+    <div class="cabinet-grid">
+      <section class="card cabinet-card">
+        <h2>Профиль</h2>
+        <form id="profileForm">
+          <label><span>Имя в игре</span><input id="profileName" maxlength="20" required></label>
+          <button class="button primary small" type="submit">Сохранить имя</button>
+        </form>
+        <p class="saved-line" id="profileSaved" hidden>Сохранено</p>
+      </section>
+
+      <section class="card cabinet-card grow-card">
+        <h2>Мои словари</h2>
+        <div class="dict-layout">
+          <div class="dict-list" id="dictList"></div>
+          <form class="dict-editor" id="dictForm">
+            <label><span>Название словаря</span><input id="dictName" maxlength="30" placeholder="Например, Аниме" required></label>
+            <label>
+              <span>Слова — одно на строку или через запятую</span>
+              <textarea id="dictWords" rows="10" placeholder="Наруто&#10;Луффи&#10;Гитлер" required></textarea>
+            </label>
+            <div class="dict-actions">
+              <button class="button primary small" type="submit">Сохранить</button>
+              <button class="button ghost small" id="dictDelete" type="button">Удалить</button>
+              <button class="button ghost small" id="dictNew" type="button">Новый</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section class="card cabinet-card">
+        <h2>Мои комнаты</h2>
+        <div class="my-rooms" id="myRooms"></div>
+      </section>
+    </div>
+  </main>
+
+  <script src="mqtt.min.js"></script>
+  <script src="app.js"></script>
+  <script src="cabinet.js"></script>
+</body>
+</html>
