@@ -16,11 +16,10 @@
       <span class="live-dot"></span>
       <span><b id="onlineCount">1</b> онлайн</span>
       <span class="dict-label">Словарь: <b id="dictName">Простые слова</b></span>
-      <select id="dictSelect" class="dict-select" hidden aria-label="Сменить словарь"></select>
     </div>
     <div class="top-actions">
       <span class="connection" id="connectionText">подключаем...</span>
-      <a class="button ghost small" href="cabinet.html">Кабинет</a>
+      <button class="button ghost small" id="openSettingsBtn" type="button">Кабинет и настройки</button>
       <a class="button ghost small" href="index.html">Выйти</a>
     </div>
   </header>
@@ -32,19 +31,25 @@
       <div class="rail-sep"></div>
       <label class="rail-label" for="sizeInput">Размер <b id="sizeText">18</b></label>
       <input id="sizeInput" type="range" min="2" max="64" value="18">
+      <label class="rail-label" for="alphaInput">Прозрачность <b id="alphaText">100%</b></label>
+      <input id="alphaInput" type="range" min="5" max="100" value="100">
+      <div class="rail-hint">колесико мыши — размер</div>
       <div class="rail-sep"></div>
-      <label class="rail-label" for="inkColor">Цвет</label>
+      <label class="rail-label" for="inkColor">Цвет кисти</label>
       <div class="color-row">
         <input id="inkColor" type="color" value="#111827" aria-label="Цвет кисти">
         <input id="hexColor" type="text" value="#111827" maxlength="7" spellcheck="false" aria-label="HEX цвет кисти">
       </div>
-      <label class="rail-label" for="bgColor">Фон</label>
+      <label class="rail-label" for="bgColor">Цвет фона</label>
       <div class="color-row">
         <input id="bgColor" type="color" value="#ffffff" aria-label="Цвет фона">
         <input id="hexBg" type="text" value="#ffffff" maxlength="7" spellcheck="false" aria-label="HEX цвет фона">
       </div>
+      <div class="rail-sep"></div>
+      <div class="recent-title">Цвета</div>
+      <div class="palette" id="presetColors"></div>
       <div class="recent-title">Недавние</div>
-      <div class="recent-colors" id="recentColors"></div>
+      <div class="palette" id="recentColors"></div>
       <div class="rail-actions">
         <button class="rail-button" id="undoBtn" type="button" title="Отменить штрих (Ctrl+Z)">↶ Отменить</button>
         <button class="rail-button danger" id="clearBtn" type="button" title="Очистить холст">🗑 Очистить</button>
@@ -68,11 +73,7 @@
       <div class="canvas-wrap" id="canvasWrap">
         <canvas id="drawCanvas" width="1000" height="750" aria-label="Общий холст"></canvas>
         <div class="brush-cursor" id="brushCursor" hidden></div>
-        <div class="canvas-overlay" id="canvasOverlay">
-          <span>👀</span>
-          <strong id="overlayTitle">Сейчас рисует соперник</strong>
-          <p class="muted" id="overlayText">Пиши варианты в чат справа</p>
-        </div>
+        <div class="hit-toast" id="hitToast" hidden></div>
       </div>
       <div class="stage-footer">
         <span id="statusText">Подключаем к комнате...</span>
@@ -81,17 +82,74 @@
     </section>
 
     <aside class="side-panel">
-      <section class="card players-card">
-        <h3>Игроки <span class="count" id="playersCount">1</span></h3>
-        <ul class="players" id="playersList"></ul>
-      </section>
-      <section class="card chat-card grow">
-        <h3>Чат</h3>
+      <div class="panel-tabs" id="panelTabs" role="tablist">
+        <button class="panel-tab active" data-tab="chat" type="button" role="tab">Чат</button>
+        <button class="panel-tab" data-tab="players" type="button" role="tab">Игроки <span class="tab-count" id="playersCount">1</span></button>
+        <button class="panel-tab" data-tab="settings" type="button" role="tab">Настройки</button>
+      </div>
+
+      <section class="card tab-panel chat-panel" data-panel="chat">
         <div class="messages" id="messages" aria-live="polite"></div>
         <form class="chat-form" id="chatForm">
           <input id="chatInput" maxlength="100" placeholder="Напиши слово..." autocomplete="off">
           <button class="button primary small" type="submit">➤</button>
         </form>
+      </section>
+
+      <section class="card tab-panel" data-panel="players" hidden>
+        <ul class="players" id="playersList"></ul>
+      </section>
+
+      <section class="card tab-panel settings-panel" data-panel="settings" hidden>
+        <div class="settings-scroll">
+          <div class="settings-block">
+            <h3>Комната</h3>
+            <p class="muted settings-line">Название: <b id="settingsRoomName">Простые</b></p>
+            <label class="settings-field">
+              <span>Словарь</span>
+              <select id="dictSelect" aria-label="Сменить словарь"></select>
+            </label>
+            <label class="settings-field">
+              <span>Время раунда</span>
+              <select id="roundMsSelect" aria-label="Время раунда">
+                <option value="60000">1 минута</option>
+                <option value="90000" selected>1,5 минуты</option>
+                <option value="120000">2 минуты</option>
+                <option value="180000">3 минуты</option>
+              </select>
+            </label>
+            <p class="muted settings-note" id="settingsNote">Сменять словарь и время может только создатель комнаты.</p>
+          </div>
+
+          <div class="settings-block">
+            <h3>Личный кабинет</h3>
+            <div class="inline-profile">
+              <label class="settings-field">
+                <span>Имя в игре</span>
+                <input id="settingsName" maxlength="20" placeholder="Как тебя зовут">
+              </label>
+              <button class="button primary small" id="settingsNameSave" type="button">Сохранить</button>
+              <span class="saved-line" id="settingsSaved" hidden>Сохранено</span>
+            </div>
+
+            <div class="settings-subhead">Мои словари</div>
+            <div class="inline-dict-list" id="settingsDictList"></div>
+            <label class="settings-field">
+              <span>Название словаря</span>
+              <input id="settingsDictName" maxlength="30" placeholder="Например, Аниме">
+            </label>
+            <label class="settings-field">
+              <span>Слова (одно на строку или через запятую)</span>
+              <textarea id="settingsDictWords" rows="4" placeholder="Наруто&#10;Луффи&#10;Гитлер"></textarea>
+            </label>
+            <div class="inline-dict-actions">
+              <button class="button primary small" id="settingsDictSave" type="button">Сохранить словарь</button>
+              <button class="button ghost small" id="settingsDictDelete" type="button">Удалить</button>
+              <button class="button ghost small" id="settingsDictNew" type="button">Новый</button>
+            </div>
+            <a class="link-button settings-link" href="cabinet.html">Открыть полный кабинет →</a>
+          </div>
+        </div>
       </section>
     </aside>
   </main>

@@ -11,6 +11,12 @@
   var myId = profile.id;
   var sessionJoinedAt = Date.now();
   var ROUND_MS = 90 * 1000;
+  var HIT_PAUSE_MS = 2400;
+
+  var PRESET_COLORS = [
+    '#111827', '#ffffff', '#ef4444', '#f97316', '#fbbf24', '#a3e635',
+    '#34d399', '#22d3ee', '#38bdf8', '#6366f1', '#a78bfa', '#f472b6'
+  ];
 
   var TOOLS = [
     { id: 'brush', name: 'Кисть', icon: '<path d="M4 18c2.2.6 4-.2 5-2 .8-1.5 1-3 2.5-4.5L16 7l3 3-5.5 5.5C12 16 10.5 16.2 9 17c-1.5 1-3.3 1.8-5 1Z"/>' },
@@ -40,8 +46,19 @@
   var hintShown = false;
   var banned = false;
   var client = null;
+  var activePanel = 'chat';
+  var editingInlineDict = null;
+  var handledHitId = null;
+  var hitTimer = null;
+  var wasHitPaused = false;
 
-  var tool = { current: 'brush', size: 18, color: '#111827', bg: '#ffffff' };
+  var tool = {
+    current: 'brush',
+    size: Number(profile.brushSize) || 18,
+    alpha: Number(profile.brushAlpha) || 100,
+    color: profile.inkColor || '#111827',
+    bg: profile.bgColor || '#ffffff'
+  };
 
   var canvas = document.getElementById('drawCanvas');
   var ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -56,15 +73,17 @@
     online: document.getElementById('onlineCount'),
     connection: document.getElementById('connectionText'),
     dictName: document.getElementById('dictName'),
-    dictSelect: document.getElementById('dictSelect'),
     toolRail: document.getElementById('toolRail'),
     toolGrid: document.getElementById('toolGrid'),
     size: document.getElementById('sizeInput'),
     sizeText: document.getElementById('sizeText'),
+    alpha: document.getElementById('alphaInput'),
+    alphaText: document.getElementById('alphaText'),
     inkColor: document.getElementById('inkColor'),
     hexColor: document.getElementById('hexColor'),
     bgColor: document.getElementById('bgColor'),
     hexBg: document.getElementById('hexBg'),
+    presets: document.getElementById('presetColors'),
     recent: document.getElementById('recentColors'),
     undo: document.getElementById('undoBtn'),
     clear: document.getElementById('clearBtn'),
@@ -75,16 +94,29 @@
     timer: document.getElementById('timerText'),
     wrap: document.getElementById('canvasWrap'),
     cursor: document.getElementById('brushCursor'),
-    overlay: document.getElementById('canvasOverlay'),
-    overlayTitle: document.getElementById('overlayTitle'),
-    overlayText: document.getElementById('overlayText'),
+    hitToast: document.getElementById('hitToast'),
     status: document.getElementById('statusText'),
     sync: document.getElementById('syncText'),
+    panelTabs: document.getElementById('panelTabs'),
+    openSettingsBtn: document.getElementById('openSettingsBtn'),
     players: document.getElementById('playersList'),
     playersCount: document.getElementById('playersCount'),
     messages: document.getElementById('messages'),
     chatForm: document.getElementById('chatForm'),
     chatInput: document.getElementById('chatInput'),
+    settingsRoomName: document.getElementById('settingsRoomName'),
+    dictSelect: document.getElementById('dictSelect'),
+    roundMsSelect: document.getElementById('roundMsSelect'),
+    settingsNote: document.getElementById('settingsNote'),
+    settingsName: document.getElementById('settingsName'),
+    settingsNameSave: document.getElementById('settingsNameSave'),
+    settingsSaved: document.getElementById('settingsSaved'),
+    settingsDictList: document.getElementById('settingsDictList'),
+    settingsDictName: document.getElementById('settingsDictName'),
+    settingsDictWords: document.getElementById('settingsDictWords'),
+    settingsDictSave: document.getElementById('settingsDictSave'),
+    settingsDictDelete: document.getElementById('settingsDictDelete'),
+    settingsDictNew: document.getElementById('settingsDictNew'),
     nameModal: document.getElementById('nameModal'),
     nameInput: document.getElementById('nameInput'),
     nameForm: document.getElementById('nameForm')
@@ -114,6 +146,10 @@
     return K.isBanned(state, myId);
   }
 
+  function isHitPaused() {
+    return !!(state && state.pausedUntil && Date.now() < state.pausedUntil);
+  }
+
   function normalizeState(data) {
     var s = data || {};
     var dictionary = s.dictionary && Array.isArray(s.dictionary.words) && s.dictionary.words.length
@@ -131,6 +167,11 @@
     s.dictionary = { id: dictionary.id, name: dictionary.name, words: dictionary.words.slice(0, 500) };
     s.bg = typeof s.bg === 'string' ? s.bg : '#ffffff';
     s.drawer = typeof s.drawer === 'string' ? s.drawer : '';
+    s.roundMs = Number(s.roundMs) === 60000 || Number(s.roundMs) === 120000 || Number(s.roundMs) === 180000
+      ? Number(s.roundMs)
+      : ROUND_MS;
+    s.pausedUntil = Number(s.pausedUntil) || 0;
+    s.hitInfo = s.hitInfo && typeof s.hitInfo === 'object' ? s.hitInfo : null;
     s.updatedAt = Number(s.updatedAt) || 0;
     s.updatedBy = s.updatedBy || '';
     return s;
@@ -180,7 +221,7 @@
       owner: myId,
       stroke: stroke ? {
         id: stroke.id, owner: stroke.owner, tool: stroke.tool,
-        color: stroke.color, size: stroke.size,
+        color: stroke.color, size: stroke.size, alpha: stroke.alpha,
         points: stroke.points.slice(-160), bg: stroke.bg
       } : null,
       at: Date.now()
@@ -210,7 +251,10 @@
     state.round += 1;
     state.startedAt = Date.now();
     state.strokes = [];
-    state.bg = '#ffffff';
+    state.bg = state.drawer === myId ? tool.bg : '#ffffff';
+    state.pausedUntil = 0;
+    state.hitInfo = null;
+    handledHitId = null;
     handledStart = state.startedAt;
     hintShown = false;
     localDraft = null;
@@ -221,13 +265,42 @@
   }
 
   function checkTimeout() {
-    if (!state || Date.now() - state.startedAt < ROUND_MS) return;
+    if (!state) return;
+    if (state.pausedUntil && Date.now() < state.pausedUntil) return;
+    if (Date.now() - state.startedAt < (state.roundMs || ROUND_MS)) return;
     if (handledStart === state.startedAt) return;
     handledStart = state.startedAt;
     if (isDrawer() || isCreator()) {
       rotateDrawer('Время вышло!');
       publishState();
     }
+  }
+
+  function showHitAnimation(info) {
+    if (!info || !el.hitToast) return;
+    el.hitToast.textContent = info.text || 'Угадали! +10 очков';
+    el.hitToast.hidden = false;
+    el.wrap.classList.remove('celebrate');
+    void el.wrap.offsetWidth;
+    el.wrap.classList.add('celebrate');
+    if (hitTimer) clearTimeout(hitTimer);
+    hitTimer = setTimeout(function () {
+      el.hitToast.hidden = true;
+      el.wrap.classList.remove('celebrate');
+    }, HIT_PAUSE_MS);
+  }
+
+  function scheduleHitResolution(info) {
+    if (!info || !info.id || handledHitId === info.id) return;
+    handledHitId = info.id;
+    showHitAnimation(info);
+    setTimeout(function () {
+      if (!state || !state.hitInfo || state.hitInfo.id !== info.id) return;
+      var drawerPresent = presentPlayers().some(function (p) { return p.id === state.drawer; });
+      if (!isDrawer() && !(isCreator() && !drawerPresent)) return;
+      rotateDrawer(state.hitInfo.reason || 'Слово угадано!');
+      publishState();
+    }, HIT_PAUSE_MS);
   }
 
   function ensureDrawer() {
@@ -285,6 +358,7 @@
     var points = stroke.points;
     var size = Math.max(2, Number(stroke.size) || 18);
     var color = stroke.color || '#111827';
+    var alpha = stroke.alpha == null ? 1 : Math.max(0.05, Math.min(1, Number(stroke.alpha)));
     var start = points[0];
     var end = points[points.length - 1];
 
@@ -293,9 +367,11 @@
     context.lineJoin = 'round';
     context.strokeStyle = color;
     context.fillStyle = color;
+    context.globalAlpha = alpha;
 
     if (stroke.tool === 'eraser') {
       context.globalCompositeOperation = 'destination-out';
+      context.globalAlpha = 1;
       context.lineWidth = size * 1.5;
       smoothPath(context, points);
       context.stroke();
@@ -305,7 +381,7 @@
 
     switch (stroke.tool) {
       case 'pencil':
-        context.globalAlpha = 0.92;
+        context.globalAlpha = 0.92 * alpha;
         context.lineWidth = Math.max(1, size * 0.45);
         context.beginPath();
         context.moveTo(points[0].x, points[0].y);
@@ -313,7 +389,7 @@
         context.stroke();
         break;
       case 'marker':
-        context.globalAlpha = 0.34;
+        context.globalAlpha = 0.34 * alpha;
         context.lineWidth = size * 1.5;
         smoothPath(context, points);
         context.stroke();
@@ -324,7 +400,7 @@
           var gradient = context.createRadialGradient(point.x, point.y, 0, point.x, point.y, radius);
           gradient.addColorStop(0, color);
           gradient.addColorStop(1, 'rgba(0,0,0,0)');
-          context.globalAlpha = 0.075;
+          context.globalAlpha = 0.075 * alpha;
           context.fillStyle = gradient;
           context.beginPath();
           context.arc(point.x, point.y, radius, 0, Math.PI * 2);
@@ -356,13 +432,13 @@
         break;
       }
       case 'fill':
-        context.globalAlpha = 0.55;
+        context.globalAlpha = 0.55 * alpha;
         context.beginPath();
         context.moveTo(points[0].x, points[0].y);
         for (var j = 1; j < points.length; j++) context.lineTo(points[j].x, points[j].y);
         context.closePath();
         context.fill();
-        context.globalAlpha = 0.95;
+        context.globalAlpha = 0.95 * alpha;
         context.lineWidth = Math.max(2, size * 0.35);
         context.stroke();
         break;
@@ -391,10 +467,17 @@
     ctx.restore();
   }
 
+  function cursorFactor() {
+    if (tool.current === 'eraser' || tool.current === 'marker' || tool.current === 'airbrush') return 1.5;
+    if (tool.current === 'pencil') return 0.45;
+    return 1;
+  }
+
   function updateCursor(event) {
     if (isBannedMe() || !isDrawer()) { el.cursor.hidden = true; return; }
     var rect = el.wrap.getBoundingClientRect();
-    var diameter = Math.max(6, Math.round(tool.size * (canvas.width / rect.width)));
+    var scale = rect.width / canvas.width;
+    var diameter = Math.max(4, Math.round(tool.size * cursorFactor() * scale));
     el.cursor.style.width = diameter + 'px';
     el.cursor.style.height = diameter + 'px';
     el.cursor.style.left = (event.clientX - rect.left) + 'px';
@@ -457,6 +540,20 @@
     el.dictName.textContent = getDictionary().name;
   }
 
+  function swatchButton(color) {
+    var active = tool.color.toLowerCase() === color.toLowerCase() ? ' active' : '';
+    return '<button class="swatch' + active + '" type="button" data-color="' + K.escapeHtml(color) + '" style="background:' + K.escapeHtml(color) + '" title="' + K.escapeHtml(color) + '"></button>';
+  }
+
+  function renderPalettes() {
+    el.presets.innerHTML = PRESET_COLORS.map(swatchButton).join('');
+    var recent = (profile.recentColors || []).slice(0, 6);
+    while (recent.length < 6) recent.push('');
+    el.recent.innerHTML = recent.map(function (color) {
+      return color ? swatchButton(color) : '<span class="empty-swatch"></span>';
+    }).join('');
+  }
+
   function renderTools() {
     var canDraw = isDrawer() && !isBannedMe();
     el.toolRail.classList.toggle('disabled', !canDraw);
@@ -470,34 +567,33 @@
     });
     el.size.value = tool.size;
     el.sizeText.textContent = tool.size;
+    el.alpha.value = tool.alpha;
+    el.alphaText.textContent = tool.alpha + '%';
     el.inkColor.value = tool.color;
     el.hexColor.value = tool.color;
     el.bgColor.value = tool.bg;
     el.hexBg.value = tool.bg;
-    el.recent.innerHTML = (profile.recentColors || []).map(function (color) {
-      return '<button class="recent-color" type="button" data-color="' + K.escapeHtml(color) + '" style="background:' + K.escapeHtml(color) + '" title="' + K.escapeHtml(color) + '"></button>';
-    }).join('');
-
-    el.overlay.hidden = canDraw;
-    if (isBannedMe()) {
-      el.overlayTitle.textContent = 'Вы удалены из комнаты';
-      el.overlayText.textContent = 'Создатель комнаты заблокировал ваш доступ.';
-    } else {
-      var drawer = presentPlayers().filter(function (p) { return p.id === (state && state.drawer); })[0];
-      el.overlayTitle.textContent = 'Сейчас рисует ' + (drawer ? drawer.name : 'соперник');
-      el.overlayText.textContent = 'Пиши варианты в чат справа';
-    }
+    renderPalettes();
 
     if (isBannedMe()) el.status.textContent = 'Вы заблокированы в этой комнате';
     else if (canDraw) el.status.textContent = 'Вы рисуете слово. Остальные угадывают!';
-    else el.status.textContent = 'Вы угадываете. Пишите варианты в чат!';
+    else el.status.textContent = 'Вы угадываете. Рисунок виден без затемнения!';
     el.sync.textContent = client && client.connected ? 'онлайн-синхронизация' : 'переподключение...';
-    el.chatInput.disabled = isBannedMe();
+    el.chatInput.disabled = isBannedMe() || isHitPaused();
+    el.chatInput.placeholder = isHitPaused() ? 'Пауза — смотрите анимацию...' : 'Напиши слово...';
     el.hint.disabled = isBannedMe();
 
     el.roomBadge.hidden = !isCreator();
-    el.dictSelect.hidden = !isCreator();
-    document.querySelector('.dict-label').hidden = !isCreator();
+    el.settingsRoomName.textContent = (meta && meta.name) || room;
+    el.dictSelect.disabled = !isCreator();
+    el.roundMsSelect.disabled = !isCreator();
+    el.settingsNote.textContent = isCreator()
+      ? 'Вы создатель комнаты: можно менять словарь и время раунда.'
+      : 'Сменять словарь и время может только создатель комнаты.';
+    if (document.activeElement !== el.dictSelect) el.dictSelect.value = getDictionary().id;
+    if (document.activeElement !== el.roundMsSelect) el.roundMsSelect.value = String((state && state.roundMs) || ROUND_MS);
+    if (document.activeElement !== el.settingsName) el.settingsName.value = profile.name;
+    renderInlineDicts();
   }
 
   function fillDictionarySelect() {
@@ -509,7 +605,15 @@
 
   function renderTimer() {
     if (!state) return;
-    var left = Math.max(0, Math.ceil((ROUND_MS - (Date.now() - state.startedAt)) / 1000));
+    var pausedNow = isHitPaused();
+    if (wasHitPaused && !pausedNow) renderTools();
+    wasHitPaused = pausedNow;
+    var duration = state.roundMs || ROUND_MS;
+    var left = Math.max(0, Math.ceil((duration - (Date.now() - state.startedAt)) / 1000));
+    if (pausedNow) {
+      el.timer.textContent = 'пауза';
+      return;
+    }
     el.timer.textContent = String(Math.floor(left / 60)).padStart(2, '0') + ':' + String(left % 60).padStart(2, '0');
   }
 
@@ -526,7 +630,7 @@
   function applyMeta() {
     if (!meta) return;
     el.roomTitle.textContent = meta.name || room;
-    if (isCreator()) fillDictionarySelect();
+    fillDictionarySelect();
     renderTools();
   }
 
@@ -619,6 +723,7 @@
       }
       applyMeta();
       renderAll();
+      if (state.hitInfo) scheduleHitResolution(state.hitInfo);
       ensureDrawer();
       checkTimeout();
       return;
@@ -661,7 +766,8 @@
       strokes: [],
       messages: [],
       scores: {},
-      bg: '#ffffff'
+      bg: drawer === myId ? tool.bg : '#ffffff',
+      roundMs: ROUND_MS
     });
     systemMessage('Комната «' + (meta ? meta.name : 'Простые') + '» готова. Удачи!');
     publishState();
@@ -694,7 +800,8 @@
         1, 1
       ).data;
       tool.color = '#' + [pixel[0], pixel[1], pixel[2]].map(function (v) { return ('0' + v.toString(16)).slice(-2); }).join('');
-      renderTools();
+      profile.inkColor = tool.color;
+      rememberColor(tool.color);
       return;
     }
 
@@ -706,6 +813,7 @@
       tool: tool.current,
       color: tool.color,
       size: tool.size,
+      alpha: tool.alpha / 100,
       bg: tool.bg,
       points: [pointFromEvent(event)]
     };
@@ -752,6 +860,17 @@
   canvas.addEventListener('pointerup', endStroke);
   canvas.addEventListener('pointercancel', endStroke);
   canvas.addEventListener('pointerleave', function () { if (!drawing) el.cursor.hidden = true; });
+  canvas.addEventListener('wheel', function (event) {
+    if (!isDrawer() || isBannedMe()) return;
+    event.preventDefault();
+    var delta = event.deltaY < 0 ? 2 : -2;
+    tool.size = Math.max(2, Math.min(64, tool.size + delta));
+    profile.brushSize = tool.size;
+    K.setProfile(profile);
+    el.size.value = tool.size;
+    el.sizeText.textContent = tool.size;
+    updateCursor(event);
+  }, { passive: false });
 
   /* Панель инструментов */
   el.toolGrid.innerHTML = TOOLS.map(function (t) {
@@ -768,7 +887,7 @@
 
   function rememberColor(color) {
     var colors = profile.recentColors || [];
-    colors = [color].concat(colors.filter(function (c) { return c !== color; })).slice(0, 8);
+    colors = [color].concat(colors.filter(function (c) { return c !== color; })).slice(0, 6);
     profile.recentColors = colors;
     K.setProfile(profile);
     renderTools();
@@ -777,20 +896,32 @@
   function setInk(color) {
     if (!/^#[0-9a-fA-F]{6}$/.test(color)) return;
     tool.color = color.toLowerCase();
+    profile.inkColor = tool.color;
     rememberColor(tool.color);
   }
 
   function setBg(color) {
     if (!/^#[0-9a-fA-F]{6}$/.test(color)) return;
     tool.bg = color.toLowerCase();
-    if (state) { state.bg = tool.bg; publishState(); }
+    profile.bgColor = tool.bg;
+    K.setProfile(profile);
+    if (state && isDrawer()) { state.bg = tool.bg; publishState(); }
     renderTools();
     redraw();
   }
 
   el.size.addEventListener('input', function () {
     tool.size = Number(el.size.value);
+    profile.brushSize = tool.size;
+    K.setProfile(profile);
     el.sizeText.textContent = tool.size;
+  });
+
+  el.alpha.addEventListener('input', function () {
+    tool.alpha = Number(el.alpha.value);
+    profile.brushAlpha = tool.alpha;
+    K.setProfile(profile);
+    el.alphaText.textContent = tool.alpha + '%';
   });
 
   el.inkColor.addEventListener('input', function () { setInk(el.inkColor.value); });
@@ -798,10 +929,12 @@
   el.bgColor.addEventListener('input', function () { setBg(el.bgColor.value); });
   el.hexBg.addEventListener('change', function () { setBg(el.hexBg.value); renderTools(); });
 
-  el.recent.addEventListener('click', function (event) {
+  function handlePaletteClick(event) {
     var btn = event.target.closest('[data-color]');
-    if (btn) setInk(btn.dataset.color);
-  });
+    if (btn && !btn.disabled) setInk(btn.dataset.color);
+  }
+  el.presets.addEventListener('click', handlePaletteClick);
+  el.recent.addEventListener('click', handlePaletteClick);
 
   el.undo.addEventListener('click', function () {
     if (!state || !isDrawer()) return;
@@ -817,8 +950,7 @@
     state.strokes = [];
     localDraft = null;
     remoteDrafts = {};
-    tool.bg = '#ffffff';
-    state.bg = '#ffffff';
+    state.bg = tool.bg;
     publishDraft(null);
     publishState();
     redraw();
@@ -836,6 +968,7 @@
   el.chatForm.addEventListener('submit', function (event) {
     event.preventDefault();
     if (!state || isBannedMe()) return;
+    if (state.pausedUntil && Date.now() < state.pausedUntil) return;
     var text = el.chatInput.value.trim();
     if (!text) return;
     var hit = !isDrawer() && text.toLowerCase() === word().toLowerCase();
@@ -847,7 +980,17 @@
     el.chatInput.value = '';
     if (hit) {
       state.scores[profile.name] = (state.scores[profile.name] || 0) + 10;
-      rotateDrawer(profile.name + ' угадал! +10 очков.');
+      var reason = profile.name + ' угадал! +10 очков.';
+      systemMessage(reason);
+      state.pausedUntil = Date.now() + HIT_PAUSE_MS;
+      state.hitInfo = {
+        id: K.uid(),
+        text: '🎯 ' + profile.name + ' угадал! +10 очков',
+        reason: reason,
+        at: Date.now()
+      };
+      handledHitId = state.hitInfo.id;
+      showHitAnimation(state.hitInfo);
     }
     publishState();
     renderAll();
@@ -882,7 +1025,7 @@
     state.wordIndex = K.hash(myId) % Math.max(1, dict.words.length);
     state.startedAt = Date.now();
     state.strokes = [];
-    state.bg = '#ffffff';
+    state.bg = state.drawer === myId ? tool.bg : '#ffffff';
     localDraft = null;
     remoteDrafts = {};
     publishDraft(null);
@@ -890,6 +1033,99 @@
     publishState();
     renderAll();
   });
+
+  el.roundMsSelect.addEventListener('change', function () {
+    if (!isCreator() || !state) return;
+    var ms = Number(el.roundMsSelect.value) || ROUND_MS;
+    state.roundMs = ms;
+    state.startedAt = Date.now();
+    handledStart = state.startedAt;
+    systemMessage('Создатель установил время раунда: ' + el.roundMsSelect.selectedOptions[0].textContent + '.');
+    publishState();
+    renderAll();
+  });
+
+  function switchPanel(name) {
+    activePanel = name;
+    el.panelTabs.querySelectorAll('.panel-tab').forEach(function (btn) {
+      btn.classList.toggle('active', btn.dataset.tab === name);
+    });
+    document.querySelectorAll('[data-panel]').forEach(function (panel) {
+      panel.hidden = panel.dataset.panel !== name;
+    });
+  }
+
+  el.panelTabs.addEventListener('click', function (event) {
+    var btn = event.target.closest('.panel-tab');
+    if (btn) switchPanel(btn.dataset.tab);
+  });
+  el.openSettingsBtn.addEventListener('click', function () { switchPanel('settings'); });
+
+  function renderInlineDicts() {
+    var custom = K.getCustomDictionaries();
+    el.settingsDictList.innerHTML = custom.length
+      ? custom.map(function (dict) {
+          return '<button class="dict-item' + (dict.id === editingInlineDict ? ' active' : '') + '" type="button" data-id="' + K.escapeHtml(dict.id) + '">' +
+            '<span>' + K.escapeHtml(dict.name) + '</span><small>' + dict.words.length + '</small></button>';
+        }).join('')
+      : '<p class="empty">Своих словарей пока нет.</p>';
+    el.settingsDictDelete.disabled = !editingInlineDict;
+  }
+
+  function selectInlineDict(id) {
+    var found = null;
+    K.getCustomDictionaries().forEach(function (dict) { if (dict.id === id) found = dict; });
+    editingInlineDict = found ? found.id : null;
+    el.settingsDictName.value = found ? found.name : '';
+    el.settingsDictWords.value = found ? found.words.join('\n') : '';
+    renderInlineDicts();
+    fillDictionarySelect();
+    renderTools();
+  }
+
+  el.settingsDictList.addEventListener('click', function (event) {
+    var item = event.target.closest('.dict-item');
+    if (item) selectInlineDict(item.dataset.id);
+  });
+
+  el.settingsNameSave.addEventListener('click', function () {
+    var name = el.settingsName.value.trim();
+    if (!name) return;
+    profile.name = name;
+    profile.color = K.colorFor(name);
+    K.setProfile(profile);
+    publishPresence(true);
+    el.settingsSaved.hidden = false;
+    setTimeout(function () { el.settingsSaved.hidden = true; }, 1800);
+    renderAll();
+  });
+
+  el.settingsDictSave.addEventListener('click', function () {
+    var name = el.settingsDictName.value.trim();
+    var words = K.wordsFromText(el.settingsDictWords.value);
+    if (!name || !words.length) return;
+    var list = K.getCustomDictionaries();
+    var existing = null;
+    list.forEach(function (dict) { if (dict.id === editingInlineDict) existing = dict; });
+    if (existing) {
+      existing.name = name;
+      existing.words = words;
+    } else {
+      existing = { id: 'custom-' + K.uid(), name: name, words: words, createdAt: Date.now() };
+      list.push(existing);
+    }
+    K.saveCustomDictionaries(list);
+    selectInlineDict(existing.id);
+  });
+
+  el.settingsDictDelete.addEventListener('click', function () {
+    if (!editingInlineDict) return;
+    var list = K.getCustomDictionaries().filter(function (dict) { return dict.id !== editingInlineDict; });
+    K.saveCustomDictionaries(list);
+    selectInlineDict(null);
+  });
+
+  el.settingsDictNew.addEventListener('click', function () { selectInlineDict(null); });
 
   el.nameModal.addEventListener('close', function () {
     if (el.nameForm.returnValue === 'cancel') return;

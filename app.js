@@ -102,11 +102,19 @@
         name: 'Игрок ' + (10 + hash(navigator.userAgent) % 90),
         color: colorFor(navigator.userAgent),
         named: false,
+        inkColor: '#111827',
+        bgColor: '#ffffff',
+        brushSize: 18,
+        brushAlpha: 100,
         recentColors: ['#111827', '#ffffff', '#ef4444', '#38bdf8']
       };
       write(KEY_PROFILE, profile);
     }
     if (!Array.isArray(profile.recentColors)) profile.recentColors = ['#111827', '#ffffff', '#ef4444', '#38bdf8'];
+    if (!profile.inkColor) profile.inkColor = '#111827';
+    if (!profile.bgColor) profile.bgColor = '#ffffff';
+    if (!Number(profile.brushSize)) profile.brushSize = 18;
+    if (!Number(profile.brushAlpha)) profile.brushAlpha = 100;
     return profile;
   }
 
