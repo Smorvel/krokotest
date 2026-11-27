@@ -273,9 +273,12 @@
     return window.mqtt.connect(BROKER, options);
   }
 
-  function publish(client, topicName, value, retain) {
+  function publish(client, topicName, value, retain, qos) {
     if (!client || !client.connected) return false;
-    client.publish(topicName, JSON.stringify(value), { qos: 1, retain: !!retain });
+    client.publish(topicName, JSON.stringify(value), {
+      qos: qos === 0 ? 0 : 1,
+      retain: !!retain
+    });
     return true;
   }
 

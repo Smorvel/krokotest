@@ -65,6 +65,18 @@
   G.handledHitId = null;
   G.handledRotation = null;
   G.lastRotationAt = 0;
+  G.canvasSeen = false;
+  /* Версия холста приходит только из canvas/<round>. Отдельные события
+     штрихов — быстрый предпросмотр и не должны откатывать снимок назад. */
+  G.canvasVersion = 0;
+  G.canvasRound = 0;
+  G.futureStrokes = {};
+  G.futureDeletions = {};
+  G.deletedStrokes = {};
+  G.drawerMissingSince = 0;
+  G.drawerSeenAt = 0;
+  G.DRAWER_MISSING_GRACE_MS = 45000;
+  G.seenChatIds = {};
   G.hitTimer = null;
   G.handledRevealId = null;
   G.wasHitPaused = false;

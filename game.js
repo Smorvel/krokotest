@@ -10,18 +10,26 @@
 
     G.markSynced = markSynced;
 
+    var periodicTick = 0;
     setInterval(function () {
       if (sessionKicked) return;
+      periodicTick += 1;
       if (client && client.connected) publishPresence(true);
       /* Художник периодически рассылает полный холст: если отдельное событие
-         штриха потерялось, следующий снимок всё равно восстановит его у всех. */
+         штриха потерялось, следующий снимок всё равно восстановит его у всех.
+         Общее состояние шлём реже — оно не несёт рисунок и только дублирует
+         уже доставленные события. */
       if (state && isDrawer()) {
         publishCanvasSnapshot();
-        publishState();
+        if (periodicTick % 3 === 0) publishState();
       }
-      /* Снимок, пришедший раньше состояния, применяется как только раунд
-       * состояния догнал его. */
-      if (state) flushPendingCanvas();
+      /* Снимок или событие, пришедшие раньше состояния, применяются как только
+       * раунд состояния догнал их. */
+      if (state) {
+        flushPendingCanvas();
+        flushFutureEvents();
+        flushPendingStrokes();
+      }
       if (state && state.hitInfo) scheduleHitResolution(state.hitInfo);
       if (state && state.reveal && Number(state.reveal.until) <= Date.now()) finishReveal(state.reveal);
       if (state) ensureDrawer();
@@ -48,7 +56,7 @@
     renderAll();
     if (client.connected && !subscribedAt) {
       subscribedAt = Date.now();
-      presenceReadyAt = subscribedAt + 5000;
+      presenceReadyAt = subscribedAt + 15000;
       scheduleInitialState();
     }
   }

@@ -55,7 +55,10 @@
       client.subscribe(K.topic(room, 'canvas/+'), { qos: 1 });
       client.subscribe(K.topic(room, 'chat/+'), { qos: 1 });
       subscribedAt = Date.now();
-      presenceReadyAt = subscribedAt + 5000;
+      /* Медленный канал (например, из Китая) может доставлять retained-сообщения
+         много секунд. До истечения этого срока никто не объявляет художника
+         «ушедшим» и не забирает у него ход. */
+      presenceReadyAt = subscribedAt + 15000;
       publishPresence(true);
       scheduleInitialState();
       renderTools();
@@ -81,15 +84,45 @@
       var pending = Object.keys(pendingStrokes).map(function (id) { return pendingStrokes[id]; });
       pendingStrokes = {};
       pending.sort(function (a, b) { return (Number(a.seq) || 0) - (Number(b.seq) || 0); });
-      pending.forEach(applyStrokeEvent);
+      pending.forEach(function (data) {
+        if (applyStrokeEvent(data)) scheduleDrafts();
+      });
+    }
+
+    /* События, пришедшие раньше состояния, ждут своего раунда. Удаления
+       применяются первыми, чтобы задержавшийся штрих не воскрес после них. */
+    function flushFutureEvents() {
+      if (!state) return;
+      var round = Number(state.round);
+      Object.keys(futureDeletions).forEach(function (id) {
+        var data = futureDeletions[id];
+        if (Number(data.round) > round) return;
+        delete futureDeletions[id];
+        if (Number(data.round) === round) applyStrokeEvent(data);
+      });
+      Object.keys(futureStrokes).forEach(function (id) {
+        var data = futureStrokes[id];
+        if (Number(data.round) > round) return;
+        delete futureStrokes[id];
+        if (Number(data.round) === round && applyStrokeEvent(data)) scheduleDrafts();
+      });
+      Object.keys(pendingStrokes).forEach(function (id) {
+        var data = pendingStrokes[id];
+        if (Number(data.round) > round) {
+          futureStrokes[id] = data;
+          delete pendingStrokes[id];
+        }
+      });
     }
 
     function flushPendingCanvas() {
       var snapshot = pendingCanvas;
       if (!snapshot) return;
-      if (snapshot.round && state && Number(snapshot.round) < Number(state.round)) {
-        pendingCanvas = null;
-        return;
+      if (!snapshot.round || !state || Number(snapshot.round) === Number(state.round)) {
+        if (Number(snapshot.seq) < Math.max(Number(canvasVersion) || 0, Number(state.canvasSeq) || 0)) {
+          pendingCanvas = null;
+          return;
+        }
       }
       if (applyCanvasSnapshot(snapshot)) pendingCanvas = null;
     }
@@ -110,25 +143,34 @@
         if (!data || !Array.isArray(data.strokes)) return;
         if (isPlayerBanned({ id: data.by })) return;
         canvasSeen = true;
+        var snapshotRound = Number(data.round) || 0;
+        var snapshotSeq = Number(data.seq) || 0;
         if (!state) {
           /* Состояние ещё не пришло: запоминаем самый свежий снимок. */
-          if (!pendingCanvas || Number(data.round) > Number(pendingCanvas.round) ||
-              (Number(data.round) === Number(pendingCanvas.round) &&
-               Number(data.seq) > Number(pendingCanvas.seq))) {
+          if (!pendingCanvas || snapshotRound > Number(pendingCanvas.round) ||
+              (snapshotRound === Number(pendingCanvas.round) &&
+               snapshotSeq > Number(pendingCanvas.seq))) {
             pendingCanvas = data;
           }
           return;
         }
-        if (data.round && Number(data.round) !== Number(state.round)) {
+        if (snapshotRound && snapshotRound !== Number(state.round)) {
           /* Снимок другого раунда не трогает текущий холст и ведущего. */
-          if (Number(data.round) > Number(state.round) &&
-              (!pendingCanvas || Number(data.round) > Number(pendingCanvas.round))) {
+          if (snapshotRound > Number(state.round) &&
+              (!pendingCanvas || snapshotRound > Number(pendingCanvas.round))) {
             pendingCanvas = data;
           }
           return;
         }
-        applyCanvasSnapshot(data);
-        renderAll();
+        /* Медленный канал может доставить старый снимок после нового штриха.
+           Такой снимок нельзя применять: он стёр бы свежие штрихи. */
+        if (canvasRound === snapshotRound &&
+            snapshotSeq < Math.max(Number(canvasVersion) || 0, Number(state.canvasSeq) || 0)) return;
+        if (applyCanvasSnapshot(data)) {
+          canvasRound = snapshotRound;
+          canvasVersion = Math.max(canvasVersion, snapshotSeq);
+          renderAll();
+        }
         return;
       }
 
@@ -158,6 +200,14 @@
           remoteDrafts = {};
           localDraft = null;
           drawing = false;
+          /* Новый раунд начинает новую историю холста: старые снимки и
+             задержанные события прошлого раунда больше не нужны. */
+          canvasRound = 0;
+          canvasVersion = 0;
+          futureStrokes = {};
+          futureDeletions = {};
+          deletedStrokes = {};
+          seenChatIds = {};
         }
         if (localDraft && !isDrawer()) {
           localDraft = null;
@@ -165,6 +215,7 @@
           publishDraft(null, true);
         }
         flushPendingCanvas();
+        flushFutureEvents();
         flushPendingStrokes();
         applyMeta();
         renderAll();
@@ -179,8 +230,21 @@
       if (topic.indexOf(K.topic(room, 'presence/')) === 0) {
         if (!data.id) return;
         if (isPlayerBanned(data)) return;
+        if (data.id === (state && state.drawer)) {
+          if (data.online === false) {
+            if (!drawerMissingSince) drawerMissingSince = Date.now();
+          } else {
+            drawerMissingSince = 0;
+            drawerSeenAt = Date.now();
+          }
+        }
         if (data.online === false) delete presence[data.id];
-        else presence[data.id] = Object.assign({}, data, { ts: Number(data.ts) || 0 });
+        else presence[data.id] = Object.assign({}, data, {
+          ts: Number(data.ts) || 0,
+          /* Время получения важнее времени отправки: медленный канал может
+             доставить свежий presence с «старым» ts. */
+          seenAt: Date.now()
+        });
         renderPlayers();
         renderWord();
         renderTools();
@@ -214,11 +278,20 @@
       if (topic.indexOf(K.topic(room, 'stroke/')) === 0) {
         var eventId = String(data && (data.id || (data.stroke && data.stroke.id)) || '');
         if (!eventId || isPlayerBanned({ id: data.owner, fingerprint: data.fingerprint })) return;
-        if (state && data.round && Number(data.round) !== Number(state.round)) return;
-        if (!state || (data.round && Number(data.round) !== Number(state.round))) {
-          pendingStrokes[eventId] = data;
+        var eventRound = Number(data.round) || 0;
+        if (!state) {
+          if (data.deleted) futureDeletions[eventId] = data;
+          else if (eventRound) futureStrokes[eventId] = data;
+          else pendingStrokes[eventId] = data;
           return;
         }
+        if (eventRound && eventRound > Number(state.round)) {
+          if (data.deleted) futureDeletions[eventId] = data;
+          else futureStrokes[eventId] = data;
+          return;
+        }
+        if (eventRound && eventRound !== Number(state.round)) return;
+        if (data.deleted) futureDeletions[eventId] = data;
         if (applyStrokeEvent(data)) scheduleDrafts();
         return;
       }
@@ -295,5 +368,7 @@
     G.createInitialState = createInitialState;
     G.scheduleInitialState = scheduleInitialState;
     G.flushPendingCanvas = flushPendingCanvas;
+    G.flushPendingStrokes = flushPendingStrokes;
+    G.flushFutureEvents = flushFutureEvents;
   }
 })(window.KROKO_GAME);

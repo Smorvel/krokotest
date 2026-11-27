@@ -521,10 +521,11 @@
       state.canvasSeq = (Number(state.canvasSeq) || 0) + 1;
       stroke.seq = state.canvasSeq;
       state.strokes.push(stroke);
+      /* Одно маленькое событие штриха — этого достаточно для мгновенной
+         синхронизации. Полный снимок и состояние публикуются редко, иначе
+         медленный канал (Китай ↔ Украина) забивается дублями. */
       publishStroke(stroke, stroke.seq);
       compactStrokes();
-      publishCanvasSnapshot();
-      publishState();
       scheduleBaseRedraw();
     }
 

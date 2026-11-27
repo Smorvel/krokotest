@@ -77,7 +77,7 @@
         if (localDraft.points.length < 4000) localDraft.points.push(next);
       }
       scheduleDrafts();
-      if (Date.now() - lastDraftPublish > 110) {
+      if (Date.now() - lastDraftPublish > 300) {
         lastDraftPublish = Date.now();
         publishDraft(localDraft);
       }
