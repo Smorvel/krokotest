@@ -97,8 +97,12 @@
       el.toolGrid.innerHTML = TOOLS.map(function (entry) {
         if (entry.sep) return '<div class="tool-btn tool-sep" aria-hidden="true"></div>';
         var title = entry.name + (entry.id === 'shape' ? ': ' + SHAPE_LABELS[tool.shapeMode] : '');
+        var icon = entry.icon;
+        if (entry.id === 'shape') {
+          icon = tool.shapeMode === 'circle' ? ICONS.shapeCircle : (tool.shapeMode === 'stripe' ? ICONS.shapeStripe : ICONS.shapeSquare);
+        }
         return '<button class="tool-btn' + (tool.current === entry.id ? ' active' : '') + '" type="button" data-tool="' + entry.id + '" title="' + K.escapeHtml(title) + '">' +
-          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + entry.icon + '</svg></button>';
+          icon + '</button>';
       }).join('');
     }
   
@@ -137,7 +141,6 @@
       renderKnobs();
       el.pipetteBtn.classList.toggle('active', tool.current === 'pipette');
       var smoothTitle = 'Плавность: ' + (tool.smooth ? 'вкл' : 'выкл');
-      el.smoothBtn.textContent = '≈';
       el.smoothBtn.title = smoothTitle;
       el.smoothBtn.classList.toggle('active', tool.smooth);
       el.smoothBtn.setAttribute('aria-pressed', tool.smooth ? 'true' : 'false');

@@ -5,6 +5,8 @@
   if (!K || !window.mqtt) return;
 
   G.K = K;
+  G.ICONS = window.KROKO_GAME_ICONS || {};
+  var ICONS = G.ICONS;
   G.params = new URLSearchParams(location.search);
   G.room = G.params.get('room') || K.DEFAULT_ROOM;
   G.profile = K.getProfile();
@@ -25,13 +27,13 @@
   G.SHAPE_LABELS = { square: 'квадрат', circle: 'круг', stripe: 'полоса' };
 
   G.TOOLS = [
-    { id: 'brush', name: 'Стандартная кисть', icon: '<path d="M4 18c2.2.6 4-.2 5-2 .8-1.5 1-3 2.5-4.5L16 7l3 3-5.5 5.5C12 16 10.5 16.2 9 17c-1.5 1-3.3 1.8-5 1Z"/>' },
-    { id: 'soft', name: 'Мягкая кисть', icon: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/>' },
-    { id: 'tablet', name: 'Кисть для планшета', icon: '<path d="M4 19c2-6 3-9 5-9s2 7 4 7 2-9 4-9 2 6 3 11"/><path d="M8 4h8l1 3H7l1-3Z"/>' },
-    { id: 'shape', name: 'Фигуры', icon: '<rect x="4" y="4" width="16" height="16" rx="1"/><path d="M8 12h8"/>' },
-    { id: 'fill', name: 'Заливка', icon: '<path d="m12 3 8 8-8 8-8-8 8-8Z"/><path d="M20 11c-2 2-3 3-3 4a2 2 0 0 0 4 0c0-1-1-2-1-4Z"/>' },
+    { id: 'brush', name: 'Стандартная кисть', icon: ICONS.brush },
+    { id: 'soft', name: 'Мягкая кисть', icon: ICONS.soft },
+    { id: 'tablet', name: 'Кисть для планшета', icon: ICONS.tablet },
+    { id: 'shape', name: 'Фигуры', icon: ICONS.shapeSquare },
+    { id: 'fill', name: 'Заливка', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 8 8-8 8-8-8 8-8Z"/><path d="M20 11c-2 2-3 3-3 4a2 2 0 0 0 4 0c0-1-1-2-1-4Z"/></svg>' },
     { sep: true },
-    { id: 'eraser', name: 'Ластик', icon: '<path d="m4 16 7-7 7 7-4 4H8l-4-4Z"/><path d="m8 12 5 5"/>' }
+    { id: 'eraser', name: 'Ластик', icon: ICONS.eraser }
   ];
 
   G.state = null;
@@ -107,6 +109,10 @@
     editorRecent: document.getElementById('editorRecent'),
     palettePopover: document.getElementById('palettePopover'),
     popoverColorInput: document.getElementById('popoverColorInput'),
+    popoverSwatch: document.getElementById('popoverSwatch'),
+    paletteGrid: document.getElementById('paletteGrid'),
+    paletteNativeWrap: document.getElementById('paletteNativeWrap'),
+    paletteNativeInput: document.getElementById('paletteNativeInput'),
     popoverHexInput: document.getElementById('popoverHexInput'),
     palettePopoverClose: document.getElementById('palettePopoverClose'),
     status: document.getElementById('statusText'),

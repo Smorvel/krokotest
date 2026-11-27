@@ -272,12 +272,12 @@
           context.lineTo(shapeEnd.x, shapeEnd.y);
           context.stroke();
         } else if (mode === 'circle') {
-          var radius = Math.max(2, Math.hypot(dx, dy) / 2);
-          context.arc((shapeStart.x + shapeEnd.x) / 2, (shapeStart.y + shapeEnd.y) / 2, radius, 0, Math.PI * 2);
+          var radiusX = Math.max(2, Math.abs(dx) / 2);
+          var radiusY = Math.max(2, Math.abs(dy) / 2);
+          context.ellipse((shapeStart.x + shapeEnd.x) / 2, (shapeStart.y + shapeEnd.y) / 2, radiusX, radiusY, 0, 0, Math.PI * 2);
           context.stroke();
         } else {
-          var side = Math.max(2, Math.abs(dx), Math.abs(dy));
-          context.rect(shapeStart.x, shapeStart.y, dx < 0 ? -side : side, dy < 0 ? -side : side);
+          context.rect(shapeStart.x, shapeStart.y, dx || 2, dy || 2);
           context.stroke();
         }
         context.restore();

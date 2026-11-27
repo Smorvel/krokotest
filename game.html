@@ -176,10 +176,18 @@
       <b>Палитра цвета кисти</b>
       <button class="popover-close" id="palettePopoverClose" type="button" aria-label="Закрыть">×</button>
     </div>
-    <label class="palette-picker-label">
-      <span>Выберите цвет</span>
-      <input class="popover-color-input" id="popoverColorInput" type="color" value="#111827" aria-label="Цвет кисти">
-    </label>
+    <div class="palette-picker-label">
+      <span>Палитра цвета кисти</span>
+      <button class="popover-color-input" id="popoverColorInput" type="button" aria-label="Открыть палитру" aria-expanded="false">
+        <span class="popover-swatch" id="popoverSwatch"></span>
+        <span class="popover-swatch-label">Открыть палитру</span>
+      </button>
+      <div class="palette-grid" id="paletteGrid" hidden></div>
+      <label class="palette-native-label" id="paletteNativeWrap" hidden>
+        <span>Свой цвет</span>
+        <input class="palette-native-input ink-color-input" id="paletteNativeInput" type="color" value="#111827" aria-label="Свой цвет кисти">
+      </label>
+    </div>
     <label class="palette-hex-label">
       <span>HEX</span>
       <input class="popover-hex-input" id="popoverHexInput" type="text" value="#111827" maxlength="7" spellcheck="false" aria-label="HEX цвет кисти">
@@ -197,6 +205,7 @@
 
   <script src="mqtt.min.js"></script>
   <script src="app.js"></script>
+  <script src="game-icons.js"></script>
   <script src="game-state.js"></script>
   <script src="game-words.js"></script>
   <script src="game-room.js"></script>
