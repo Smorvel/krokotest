@@ -195,7 +195,7 @@
       K.setProfile(profile);
       applyColorInputs();
       if (state && isDrawer()) { state.bg = tool.bg; publishState(); }
-      redrawBase();
+      scheduleBaseRedraw();
       renderPalettes();
     }
   
@@ -236,7 +236,7 @@
         if (state.strokes[i].owner === myId) { state.strokes.splice(i, 1); break; }
       }
       publishState();
-      redrawBase();
+      scheduleBaseRedraw();
     });
   
     el.clear.addEventListener('click', function () {
@@ -246,7 +246,7 @@
       remoteDrafts = {};
       publishDraft(null);
       publishState();
-      redrawBase();
+      scheduleBaseRedraw();
       scheduleDrafts();
     });
   

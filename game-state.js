@@ -57,6 +57,9 @@
   G.wasHitPaused = false;
   G.previousTool = 'brush';
   G.draftFrame = null;
+  G.baseFrame = null;
+  G.fillCache = {};
+  G.fillCacheKeys = [];
   G.knobDrag = null;
   G.stampCache = {};
   G.smoothPoint = null;

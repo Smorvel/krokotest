@@ -198,7 +198,7 @@
       renderWord();
       renderTools();
       renderTimer();
-      redrawBase();
+      scheduleBaseRedraw();
       scheduleDrafts();
     }
   

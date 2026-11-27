@@ -183,7 +183,7 @@
       localDraft = null;
       remoteDrafts = {};
       publishDraft(null);
-      redrawBase();
+      scheduleBaseRedraw();
       scheduleDrafts();
       var next = players.filter(function (p) { return p.id === state.drawer; })[0];
       systemMessage(reason + ' Следующий художник: ' + (next ? next.name : 'вы') + '.');

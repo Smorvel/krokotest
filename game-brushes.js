@@ -1,5 +1,92 @@
 /* Brushes, shapes, smoothing and artist cursor. */
 (function (G) {
+  /* Hot pixel loop: kept outside `with (G)` so V8 can optimize variable access. */
+  function hexToRgb(color) {
+    var value = String(color || '#000000').replace('#', '');
+    if (value.length === 3) value = value.split('').map(function (c) { return c + c; }).join('');
+    var num = parseInt(value, 16);
+    if (isNaN(num)) return [0, 0, 0];
+    return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
+  }
+
+  function floodFill(context, point, color, alpha) {
+    var w = context.canvas.width;
+    var h = context.canvas.height;
+    var total = w * h;
+    if (!total) return;
+    var px = Math.max(0, Math.min(w - 1, Math.round(point.x)));
+    var py = Math.max(0, Math.min(h - 1, Math.round(point.y)));
+    var image = context.getImageData(0, 0, w, h);
+    var data = image.data;
+    var start = (py * w + px) * 4;
+    var tr = data[start], tg = data[start + 1], tb = data[start + 2], ta = data[start + 3];
+    var cr = hexToRgb(color);
+    var a = Math.max(0.05, Math.min(1, alpha));
+    var keep = 1 - a;
+    var mixR = cr[0] * a, mixG = cr[1] * a, mixB = cr[2] * a, mixA = 255 * a;
+    var mask = new Uint8Array(total);
+    var stackIndex = new Int32Array(total);
+    var stackLeft = new Int32Array(total);
+    var stackRight = new Int32Array(total);
+    var stackSize = 0;
+    var i, offset;
+
+    for (i = 0, offset = 0; i < total; i++, offset += 4) {
+      if (Math.abs(data[offset] - tr) <= 12 &&
+          Math.abs(data[offset + 1] - tg) <= 12 &&
+          Math.abs(data[offset + 2] - tb) <= 12 &&
+          Math.abs(data[offset + 3] - ta) <= 12) mask[i] = 1;
+    }
+
+    function push(index, left, right) {
+      stackIndex[stackSize] = index;
+      stackLeft[stackSize] = left;
+      stackRight[stackSize] = right;
+      stackSize++;
+    }
+
+    function scanRow(row, left, right) {
+      if (row < 0 || row >= h) return;
+      var base = row * w;
+      var x = left;
+      while (x <= right) {
+        while (x <= right && !mask[base + x]) x++;
+        if (x > right) break;
+        var spanStart = x;
+        while (x <= right && mask[base + x]) x++;
+        push(base + spanStart, spanStart, x - 1);
+      }
+    }
+
+    push(py * w + px, px, px);
+    while (stackSize) {
+      stackSize--;
+      var index = stackIndex[stackSize];
+      var left = stackLeft[stackSize];
+      var right = stackRight[stackSize];
+      var y = (index / w) | 0;
+      var base = y * w;
+      while (left > 0 && mask[base + left - 1]) left--;
+      while (right < w - 1 && mask[base + right + 1]) right++;
+      for (var x2 = left; x2 <= right; x2++) {
+        var pixel = base + x2;
+        if (!mask[pixel]) continue;
+        mask[pixel] = 0;
+        var o = pixel * 4;
+        data[o] = mixR + data[o] * keep;
+        data[o + 1] = mixG + data[o + 1] * keep;
+        data[o + 2] = mixB + data[o + 2] * keep;
+        data[o + 3] = mixA + data[o + 3] * keep;
+      }
+      scanRow(y - 1, left, right);
+      scanRow(y + 1, left, right);
+    }
+    context.putImageData(image, 0, 0);
+  }
+
+  G.hexToRgb = hexToRgb;
+  G.floodFill = floodFill;
+
   with (G) {
     /* ---------- Отрисовка ---------- */
   
@@ -107,60 +194,6 @@
         }
         carry = t - dist;
       }
-    }
-  
-    function hexToRgb(color) {
-      var value = String(color || '#000000').replace('#', '');
-      if (value.length === 3) value = value.split('').map(function (c) { return c + c; }).join('');
-      var num = parseInt(value, 16);
-      if (isNaN(num)) return [0, 0, 0];
-      return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
-    }
-  
-    function floodFill(context, point, color, alpha) {
-      var x = Math.max(0, Math.min(context.canvas.width - 1, Math.round(point.x)));
-      var y = Math.max(0, Math.min(context.canvas.height - 1, Math.round(point.y)));
-      var w = context.canvas.width;
-      var h = context.canvas.height;
-      var image = context.getImageData(0, 0, w, h);
-      var data = image.data;
-      var start = (y * w + x) * 4;
-      var tr = data[start], tg = data[start + 1], tb = data[start + 2], ta = data[start + 3];
-      var cr = hexToRgb(color);
-      var a = Math.max(0.05, Math.min(1, alpha));
-      var visited = new Uint8Array(w * h);
-      var stack = [x, y];
-      var maxSteps = w * h;
-  
-      function matches(index) {
-        var offset = index * 4;
-        return Math.abs(data[offset] - tr) <= 12 &&
-          Math.abs(data[offset + 1] - tg) <= 12 &&
-          Math.abs(data[offset + 2] - tb) <= 12 &&
-          Math.abs(data[offset + 3] - ta) <= 12;
-      }
-  
-      function paint(index) {
-        var offset = index * 4;
-        data[offset] = Math.round(cr[0] * a + data[offset] * (1 - a));
-        data[offset + 1] = Math.round(cr[1] * a + data[offset + 1] * (1 - a));
-        data[offset + 2] = Math.round(cr[2] * a + data[offset + 2] * (1 - a));
-        data[offset + 3] = Math.round(255 * a + data[offset + 3] * (1 - a));
-      }
-  
-      var steps = 0;
-      while (stack.length && steps < maxSteps) {
-        var py = stack.pop();
-        var px = stack.pop();
-        if (px < 0 || px >= w || py < 0 || py >= h) continue;
-        var index = py * w + px;
-        if (visited[index] || !matches(index)) continue;
-        visited[index] = 1;
-        paint(index);
-        steps++;
-        stack.push(px - 1, py, px + 1, py, px, py - 1, px, py + 1);
-      }
-      context.putImageData(image, 0, 0);
     }
   
     function cachedStamp(key, diameter, draw) {
@@ -346,14 +379,48 @@
       context.restore();
     }
   
+    function rememberFillCache(key, image) {
+      fillCache[key] = { image: image, w: canvas.width, h: canvas.height };
+      fillCacheKeys.push(key);
+      while (fillCacheKeys.length > 12) {
+        var old = fillCacheKeys.shift();
+        if (fillCache[old]) delete fillCache[old];
+      }
+    }
+
     function redrawBase() {
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = (state && state.bg) || tool.bg || '#ffffff';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      if (state) state.strokes.forEach(function (stroke) { paintStroke(ctx, stroke); });
+      if (state) {
+        var prefix = '';
+        state.strokes.forEach(function (stroke) {
+          if (stroke.tool === 'fill' && stroke.points && stroke.points.length) {
+            var key = stroke.id + '|' + prefix + '|' + (state.bg || '') + '|' + stroke.color + '|' + stroke.alpha;
+            var cached = fillCache[key];
+            if (cached && cached.w === canvas.width && cached.h === canvas.height) {
+              ctx.putImageData(cached.image, 0, 0);
+            } else {
+              floodFill(ctx, stroke.points[0], stroke.color, stroke.alpha);
+              rememberFillCache(key, ctx.getImageData(0, 0, canvas.width, canvas.height));
+            }
+          } else {
+            paintStroke(ctx, stroke);
+          }
+          prefix += (prefix ? ',' : '') + stroke.id;
+        });
+      }
       ctx.restore();
+    }
+
+    function scheduleBaseRedraw() {
+      if (baseFrame) return;
+      baseFrame = requestAnimationFrame(function () {
+        baseFrame = null;
+        redrawBase();
+      });
     }
   
     function redrawDrafts() {
@@ -412,11 +479,10 @@
     G.smoothPath = smoothPath;
     G.strokePath = strokePath;
     G.stampAlong = stampAlong;
-    G.hexToRgb = hexToRgb;
-    G.floodFill = floodFill;
     G.cachedStamp = cachedStamp;
     G.paintStroke = paintStroke;
     G.redrawBase = redrawBase;
+    G.scheduleBaseRedraw = scheduleBaseRedraw;
     G.redrawDrafts = redrawDrafts;
     G.scheduleDrafts = scheduleDrafts;
     G.cursorFactor = cursorFactor;

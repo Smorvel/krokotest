@@ -38,7 +38,7 @@
         state.strokes.push(fillStroke);
         state.strokes = state.strokes.slice(-80);
         publishState();
-        redrawBase();
+        scheduleBaseRedraw();
         return;
       }
   
@@ -102,7 +102,7 @@
         localDraft = null;
         publishState();
         publishDraft(null);
-        redrawBase();
+        scheduleBaseRedraw();
         scheduleDrafts();
       }
       if (event) updateCursor(event);
