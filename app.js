@@ -188,14 +188,14 @@
         color: initialColor,
         avatar: { body: initialColor, eyes: 'round', mouth: 'smile', bg: '#252932' },
         named: false,
-        inkColor: '#111827',
+        inkColor: '#000000',
         bgColor: '#252932',
         brushSize: 18,
         brushAlpha: 100,
         smoothing: false,
         shapeMode: 'square',
         fingerprint: getFingerprint(),
-        recentColors: ['#111827', '#ffffff', '#ef4444', '#38bdf8'],
+        recentColors: ['#000000', '#ffffff', '#ef4444', '#38bdf8'],
         recentBgColors: ['#252932', '#ffffff', '#111827']
       };
       write(KEY_PROFILE, profile);
@@ -206,9 +206,9 @@
     profile.avatar.bg = safeHex(profile.avatar.bg, '#252932');
     if (AVATAR_EYES.indexOf(profile.avatar.eyes) < 0) profile.avatar.eyes = 'round';
     if (AVATAR_MOUTHS.indexOf(profile.avatar.mouth) < 0) profile.avatar.mouth = 'smile';
-    if (!Array.isArray(profile.recentColors)) profile.recentColors = ['#111827', '#ffffff', '#ef4444', '#38bdf8'];
+    if (!Array.isArray(profile.recentColors)) profile.recentColors = ['#000000', '#ffffff', '#ef4444', '#38bdf8'];
     if (!Array.isArray(profile.recentBgColors)) profile.recentBgColors = ['#252932', '#ffffff', '#111827'];
-    if (!profile.inkColor) profile.inkColor = '#111827';
+    if (!profile.inkColor) profile.inkColor = '#000000';
     if (!profile.bgColor) profile.bgColor = '#252932';
     if (!Number(profile.brushSize)) profile.brushSize = 18;
     if (!Number(profile.brushAlpha)) profile.brushAlpha = 100;

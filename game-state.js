@@ -98,7 +98,7 @@
     current: 'brush',
     size: Number(G.profile.brushSize) || 18,
     alpha: Number(G.profile.brushAlpha) || 100,
-    color: G.profile.inkColor || '#111827',
+    color: G.profile.inkColor || '#000000',
     bg: G.profile.bgColor || '#252932',
     smooth: G.profile.smoothing === true,
     shapeMode: G.SHAPE_LABELS[G.profile.shapeMode] ? G.profile.shapeMode : 'square'

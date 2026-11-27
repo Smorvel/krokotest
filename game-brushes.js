@@ -689,7 +689,7 @@
       el.cursor.style.height = diameter + 'px';
       el.cursor.style.left = (event.clientX - rect.left) + 'px';
       el.cursor.style.top = (event.clientY - rect.top) + 'px';
-      el.cursor.style.borderColor = picking ? '#34d399' : (tool.current === 'eraser' ? '#fb7185' : '#111827');
+      el.cursor.style.borderColor = picking ? '#34d399' : (tool.current === 'eraser' ? '#fb7185' : '#000000');
       el.cursor.style.borderStyle = picking ? 'dashed' : 'solid';
       el.cursor.className = 'brush-cursor ' + (picking ? 'pipette-cursor' : 'shape-' + (tool.current === 'shape' ? tool.shapeMode : 'circle'));
       el.cursor.textContent = picking ? '💧' : '';

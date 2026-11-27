@@ -62,7 +62,7 @@
     }
 
     function currentColor() {
-      return (paletteMode === 'bg' ? tool.bg : tool.color) || '#111827';
+      return (paletteMode === 'bg' ? tool.bg : tool.color) || '#000000';
     }
 
     function setInk(color) {

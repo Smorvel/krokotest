@@ -180,18 +180,19 @@ textarea { resize: vertical; }
   overflow-x: auto;
 }
 
-/* Панель кистей едет вместе с холстом, а не «прилипает» к экрану выше него.
-   На низком экране сами кнопки получают собственную прокрутку. */
+/* Панель кистей всегда стоит рядом с холстом: JavaScript ставит её по
+   фактическим координатам холста, в том числе при прокрутке и уменьшении. */
 .tool-rail {
-  position: relative;
-  top: auto;
-  align-self: start;
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 40;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
   width: 54px;
-  max-height: calc(100vh - 30px);
+  max-height: calc(100vh - 16px);
   padding: 6px;
   overflow-y: auto;
   scrollbar-gutter: stable;
@@ -235,7 +236,7 @@ textarea { resize: vertical; }
 .tool-rail.disabled .bg-square,
 .tool-rail.disabled .pipette-btn { opacity: .45; }
 
-.stage { min-width: 400px; }
+.stage { grid-column: 2; min-width: 400px; }
 .wordbar {
   display: flex;
   align-items: center;
@@ -271,6 +272,7 @@ textarea { resize: vertical; }
   max-width: 760px;
   aspect-ratio: 1 / 1;
   margin: 0 auto;
+  transform-origin: 50% 100%;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -371,6 +373,7 @@ textarea { resize: vertical; }
 /* На широком экране правая колонка занимает всю высоту окна, как верхняя
    и нижняя панели: чат, игроки и настройки тянутся вместе с ней. */
 .side-panel {
+  grid-column: 3;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -475,10 +478,21 @@ textarea { resize: vertical; }
   .create-form, .avatar-editor, .avatar-controls { grid-template-columns: 1fr; }
   .own-room-row { flex-wrap: wrap; }
   .game-shell { grid-template-columns: 74px minmax(400px, 1fr); padding: 8px; gap: 8px; }
+  .stage { grid-column: 2; }
   .tool-rail { padding: 6px; max-height: calc(100vh - 16px); }
   .side-panel { grid-column: 1 / -1; height: auto; max-height: none; }
-  .tab-panel { min-height: 260px; }
-  .messages { flex: 0 0 260px; height: 260px; }
+  .tab-panel { min-height: 0; }
+  /* Как на croch.ru: на узком экране чат под холстом, поле ввода и свежие
+     сообщения сверху, старые уходят вниз; страница прокручивается целиком. */
+  .chat-panel { flex-direction: column-reverse; }
+  .messages {
+    flex: 0 0 auto;
+    flex-direction: column-reverse;
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+  .messages > :first-child { margin-top: 0; }
   .settings-scroll { flex: 0 0 auto; max-height: 400px; }
   .wordbar { flex-wrap: wrap; }
   .panel-tabs { grid-template-columns: repeat(3, 1fr); }
@@ -557,6 +571,7 @@ textarea { resize: vertical; }
   max-width: 760px;
   aspect-ratio: 1 / 1;
   margin: 0 auto;
+  transform-origin: 50% 100%;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -828,5 +843,5 @@ textarea { resize: vertical; }
 @media (max-width: 820px) {
   .color-dock { flex-wrap: wrap; gap: 10px; }
   .word-block strong { max-width: 100%; font-size: 16px; line-height: 28px; }
-  .messages { height: 260px; }
+  .messages { height: auto; }
 }
