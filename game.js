@@ -1,14 +1,39 @@
 /* Room startup: sync overlay, timers and initial render. */
 (function (G) {
   with (G) {
-    function markSynced() {
-      if (syncDone || sessionKicked) return;
-      syncDone = true;
-      if (el.loadingOverlay) el.loadingOverlay.hidden = true;
-      document.body.classList.remove('syncing');
+    /* Одно и то же окно используется и при первом подключении, и при потере
+       соединения: игрок всегда видит, что с комнатой нет связи. */
+    function showConnectionOverlay(title, hint) {
+      if (sessionKicked) return;
+      syncDone = false;
+      if (el.loadingOverlayText) el.loadingOverlayText.textContent = title || 'подключение';
+      if (el.loadingOverlayHint) el.loadingOverlayHint.textContent = hint || '';
+      if (el.loadingOverlay) el.loadingOverlay.hidden = false;
+      document.body.classList.add('syncing');
+      renderSync();
     }
 
+    function markSynced() {
+      if (sessionKicked || !client || !client.connected) return;
+      if (el.loadingOverlay) el.loadingOverlay.hidden = true;
+      document.body.classList.remove('syncing');
+      syncDone = true;
+    }
+
+    /* Ставим панель кистей точно напротив холста: она едет вместе с ним при
+       прокрутке и не «уползает» вниз относительно рисунка. */
+    function alignToolRail() {
+      if (!el.toolRail || !el.wrap) return;
+      el.toolRail.style.marginTop = '0px';
+      var diff = el.wrap.getBoundingClientRect().top - el.toolRail.getBoundingClientRect().top;
+      el.toolRail.style.marginTop = Math.max(0, Math.round(diff)) + 'px';
+      var top = el.toolRail.getBoundingClientRect().top;
+      el.toolRail.style.maxHeight = Math.max(140, Math.round(window.innerHeight - top - 18)) + 'px';
+    }
+
+    G.showConnectionOverlay = showConnectionOverlay;
     G.markSynced = markSynced;
+    G.alignToolRail = alignToolRail;
 
     var periodicTick = 0;
     setInterval(function () {
@@ -53,6 +78,9 @@
     if (sessionKicked) return;
     renderToolsOnce();
     applyMeta();
+    alignToolRail();
+    window.addEventListener('resize', alignToolRail);
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(alignToolRail).observe(el.wrap);
     renderAll();
     if (client.connected && !subscribedAt) {
       subscribedAt = Date.now();

@@ -106,7 +106,7 @@
   
     el.banList.addEventListener('click', function (event) {
       var btn = event.target.closest('[data-unban]');
-      if (!btn || !isCreator() || !state) return;
+      if (!btn || !isCreator() || !state || (el.blacklistBlock && el.blacklistBlock.hidden)) return;
       var id = btn.dataset.unban;
       state.bans = state.bans.filter(function (value) { return value !== id; });
       state.banRecords = state.banRecords.filter(function (record) { return record.id !== id; });

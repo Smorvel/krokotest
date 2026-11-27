@@ -17,16 +17,21 @@
     }
   
     function renderBanList() {
+      /* Чёрный список — только для создателя комнаты. Обычный игрок не видит
+         ни списка, ни кнопок разбана, даже если раньше успел открыть вкладку. */
+      if (el.blacklistBlock) el.blacklistBlock.hidden = !isCreator();
+      if (!isCreator()) {
+        el.banList.innerHTML = '';
+        return;
+      }
       var records = state && Array.isArray(state.banRecords) ? state.banRecords : [];
       if (!records.length) {
         el.banList.innerHTML = '<p class="ban-empty">Заблокированных игроков нет.</p>';
         return;
       }
       el.banList.innerHTML = records.map(function (record) {
-        var unban = isCreator()
-          ? '<button class="unban-btn" type="button" data-unban="' + K.escapeHtml(record.id) + '">разбанить</button>'
-          : '';
-        return '<div class="ban-row"><span>' + K.escapeHtml(record.name || 'Игрок') + '</span>' + unban + '</div>';
+        return '<div class="ban-row"><span>' + K.escapeHtml(record.name || 'Игрок') + '</span>' +
+          '<button class="unban-btn" type="button" data-unban="' + K.escapeHtml(record.id) + '">разбанить</button></div>';
       }).join('');
     }
   
@@ -59,7 +64,11 @@
           : '<b>' + K.escapeHtml(message.name) + ':</b> ' + K.escapeHtml(message.text);
         return '<div class="' + cls + '">' + reactionMarkup(message) + body + '</div>';
       }).join('');
-      el.messages.scrollTop = el.messages.scrollHeight;
+      /* Сообщения всегда прижаты к низу: новые появляются снизу, старые
+         уходят вверх. В узкой раскладке направление скролла может быть
+         обратным, поэтому выбираем позицию по фактическому flex-direction. */
+      var reverse = getComputedStyle(el.messages).flexDirection === 'column-reverse';
+      el.messages.scrollTop = reverse ? 0 : el.messages.scrollHeight;
     }
   
     function renderWord() {

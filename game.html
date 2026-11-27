@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=13">
+  <link rel="stylesheet" href="styles.css?v=14">
 </head>
 <body data-page="game" class="syncing">
   <main class="game-shell">
@@ -111,8 +111,8 @@
 
       <section class="card tab-panel" data-panel="players" hidden>
         <ul class="players" id="playersList"></ul>
-        <div class="blacklist-block">
-          <div class="settings-subhead">Чёрный список</div>
+        <div class="blacklist-block" id="blacklistBlock">
+          <div class="settings-subhead">Чёрный список <small>только создатель комнаты</small></div>
           <div class="ban-list" id="banList"></div>
         </div>
       </section>
@@ -192,7 +192,8 @@
   <div class="screen-overlay" id="loadingOverlay" role="status" aria-live="polite">
     <div class="overlay-card">
       <span class="overlay-spinner" aria-hidden="true"></span>
-      <b>подключение</b>
+      <b id="loadingOverlayText">подключение</b>
+      <small id="loadingOverlayHint">Подключаемся к комнате...</small>
     </div>
   </div>
 
@@ -212,20 +213,20 @@
     </form>
   </dialog>
 
-  <script src="mqtt.min.js?v=13"></script>
-  <script src="app.js?v=13"></script>
-  <script src="game-icons.js?v=13"></script>
-  <script src="game-state.js?v=13"></script>
-  <script src="game-words.js?v=13"></script>
-  <script src="game-room.js?v=13"></script>
-  <script src="game-palette.js?v=13"></script>
-  <script src="game-session.js?v=13"></script>
-  <script src="game-brushes.js?v=13"></script>
-  <script src="game-render.js?v=13"></script>
-  <script src="game-network.js?v=13"></script>
-  <script src="game-canvas.js?v=13"></script>
-  <script src="game-controls.js?v=13"></script>
-  <script src="game-ui.js?v=13"></script>
-  <script src="game.js?v=13"></script>
+  <script src="mqtt.min.js?v=14"></script>
+  <script src="app.js?v=14"></script>
+  <script src="game-icons.js?v=14"></script>
+  <script src="game-state.js?v=14"></script>
+  <script src="game-words.js?v=14"></script>
+  <script src="game-room.js?v=14"></script>
+  <script src="game-palette.js?v=14"></script>
+  <script src="game-session.js?v=14"></script>
+  <script src="game-brushes.js?v=14"></script>
+  <script src="game-render.js?v=14"></script>
+  <script src="game-network.js?v=14"></script>
+  <script src="game-canvas.js?v=14"></script>
+  <script src="game-controls.js?v=14"></script>
+  <script src="game-ui.js?v=14"></script>
+  <script src="game.js?v=14"></script>
 </body>
 </html>

@@ -45,6 +45,7 @@
   
     client.on('connect', function () {
       if (sessionKicked) return;
+      showConnectionOverlay('синхронизация', 'Подключаемся к комнате...');
       el.connection.textContent = 'онлайн';
       el.connection.classList.add('online');
       client.subscribe(K.topic(room, 'meta'), { qos: 1 });
@@ -65,17 +66,30 @@
     });
   
     client.on('reconnect', function () {
+      if (sessionKicked) return;
+      showConnectionOverlay('переподключение', 'Связь с комнатой потеряна. Пробуем снова...');
       el.connection.textContent = 'переподключение...';
       el.connection.classList.remove('online');
     });
-  
+
     client.on('offline', function () {
+      if (sessionKicked) return;
+      showConnectionOverlay('нет соединения', 'Вы не соединены с комнатой. Проверьте интернет.');
       el.connection.textContent = 'нет соединения';
       el.connection.classList.remove('online');
       renderTools();
     });
-  
+
     client.on('error', function () {
+      if (sessionKicked) return;
+      showConnectionOverlay('нет соединения', 'Вы не соединены с комнатой. Проверьте интернет.');
+      el.connection.textContent = 'нет соединения';
+      el.connection.classList.remove('online');
+    });
+
+    client.on('close', function () {
+      if (sessionKicked || leavingRoom === myId) return;
+      showConnectionOverlay('нет соединения', 'Вы не соединены с комнатой. Проверьте интернет.');
       el.connection.textContent = 'нет соединения';
       el.connection.classList.remove('online');
     });
