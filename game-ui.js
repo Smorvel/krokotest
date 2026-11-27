@@ -114,7 +114,7 @@
       }
       state.dictionaryIds = ids;
       state.dictionaryPool = dictionariesByIds(ids).map(function (dict) {
-        return { id: dict.id, name: dict.name, words: dict.words.slice(0, 500) };
+        return { id: dict.id, name: dict.name, words: dict.words.slice(0, K.MAX_DICTIONARY_WORDS) };
       });
       if (meta) {
         meta.dictionaryIds = ids.slice();

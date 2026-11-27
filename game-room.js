@@ -70,17 +70,17 @@
         ? s.dictionaryPool.filter(function (dict) {
             return dict && dict.id && dict.name && Array.isArray(dict.words) && dict.words.length;
           }).map(function (dict) {
-            return { id: dict.id, name: dict.name, words: dict.words.slice(0, 500) };
+            return { id: dict.id, name: dict.name, words: dict.words.slice(0, K.MAX_DICTIONARY_WORDS) };
           })
         : [];
       if (!s.dictionaryPool.length) {
         s.dictionaryPool = dictionariesByIds(s.dictionaryIds).map(function (dict) {
-          return { id: dict.id, name: dict.name, words: dict.words.slice(0, 500) };
+          return { id: dict.id, name: dict.name, words: dict.words.slice(0, K.MAX_DICTIONARY_WORDS) };
         });
       }
       s.wordHistory = Array.isArray(s.wordHistory) ? s.wordHistory.slice(-HISTORY_LIMIT) : [];
       s.guessedWords = Array.isArray(s.guessedWords) ? s.guessedWords : [];
-      s.dictionary = { id: dictionary.id, name: dictionary.name, words: dictionary.words.slice(0, 500) };
+      s.dictionary = { id: dictionary.id, name: dictionary.name, words: dictionary.words.slice(0, K.MAX_DICTIONARY_WORDS) };
       s.bg = typeof s.bg === 'string' ? s.bg : (tool.bg || '#252932');
       s.drawer = typeof s.drawer === 'string' ? s.drawer : '';
       s.pausedUntil = Number(s.pausedUntil) || 0;

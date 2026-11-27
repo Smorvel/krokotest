@@ -25,7 +25,7 @@
     creatorFingerprint: '',
     dictionary: { id: defaultDictionary.id, name: defaultDictionary.name, words: defaultDictionary.words },
     dictionaryIds: [defaultDictionary.id],
-    dictionaryPool: [{ id: defaultDictionary.id, name: defaultDictionary.name, words: defaultDictionary.words.slice(0, 500) }],
+    dictionaryPool: [{ id: defaultDictionary.id, name: defaultDictionary.name, words: defaultDictionary.words.slice(0, K.MAX_DICTIONARY_WORDS) }],
     createdAt: 1,
     system: true
   };
@@ -148,7 +148,7 @@
     var dictionary = {
       id: defaultDictionary.id,
       name: defaultDictionary.name,
-      words: defaultDictionary.words.slice(0, 500)
+      words: defaultDictionary.words.slice(0, K.MAX_DICTIONARY_WORDS)
     };
     var slug = 'room-' + K.uid();
     var meta = {

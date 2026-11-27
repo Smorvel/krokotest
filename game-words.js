@@ -119,7 +119,7 @@
         var pool = source.filter(function (dict) {
           return dict && dict.id && dict.name && Array.isArray(dict.words) && dict.words.length;
         }).map(function (dict) {
-          return { id: dict.id, name: dict.name, words: dict.words.slice(0, 500) };
+          return { id: dict.id, name: dict.name, words: dict.words.slice(0, K.MAX_DICTIONARY_WORDS) };
         });
         if (pool.length) return pool;
       }
@@ -135,7 +135,7 @@
       var all = [];
   
       dicts.forEach(function (dict) {
-        dict.words.slice(0, 500).forEach(function (phrase, index) {
+        dict.words.slice(0, K.MAX_DICTIONARY_WORDS).forEach(function (phrase, index) {
           var full = normPhrase(phrase);
           if (!full) return;
           var item = { dict: dict, index: index, full: full };
@@ -146,7 +146,7 @@
   
       var choices = pool.length ? pool : (all.length ? all : [{ dict: fallbackDictionary(), index: 0, full: normPhrase(fallbackDictionary().words[0]) }]);
       var pick = choices[Math.floor(Math.random() * choices.length)];
-      state.dictionary = { id: pick.dict.id, name: pick.dict.name, words: pick.dict.words.slice(0, 500) };
+      state.dictionary = { id: pick.dict.id, name: pick.dict.name, words: pick.dict.words.slice(0, K.MAX_DICTIONARY_WORDS) };
       state.wordIndex = pick.index;
       state.wordHistory = history.concat(pick.full).slice(-HISTORY_LIMIT);
       state.guessedWords = [];

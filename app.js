@@ -55,6 +55,7 @@
   ];
 
   var COLORS = ['#34d399', '#38bdf8', '#a78bfa', '#f472b6', '#fbbf24', '#fb923c', '#22d3ee', '#f87171'];
+  var MAX_DICTIONARY_WORDS = 10000;
   var AVATAR_EYES = ['round', 'happy', 'sleepy', 'wide', 'wink'];
   var AVATAR_MOUTHS = ['smile', 'grin', 'neutral', 'frown', 'surprised'];
 
@@ -287,7 +288,7 @@
       .split(/[\n,;]+/)
       .map(function (w) { return w.trim(); })
       .filter(function (w, i, arr) { return w && w.length <= 60 && arr.indexOf(w) === i; })
-      .slice(0, 500);
+      .slice(0, MAX_DICTIONARY_WORDS);
   }
 
   function isBanned(state, id) {
@@ -299,6 +300,7 @@
     ROOT: ROOT,
     DEFAULT_ROOM: DEFAULT_ROOM,
     BUILTIN_DICTIONARIES: BUILTIN_DICTIONARIES,
+    MAX_DICTIONARY_WORDS: MAX_DICTIONARY_WORDS,
     AVATAR_EYES: AVATAR_EYES,
     AVATAR_MOUTHS: AVATAR_MOUTHS,
     uid: uid,
