@@ -150,6 +150,7 @@
     function renderTools() {
       var revealing = !!(state && state.reveal);
       var canDraw = isDrawer() && !isBannedMe() && !revealing;
+      document.body.classList.toggle('can-draw', canDraw);
       renderToolGrid();
       el.toolRail.classList.toggle('disabled', !canDraw);
       el.toolGrid.querySelectorAll('button').forEach(function (button) {

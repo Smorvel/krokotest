@@ -18,45 +18,16 @@
 [hidden] { display: none !important; }
 html { scroll-behavior: smooth; }
 
-/* Скроллбары скрыты до прокрутки страницы или наведения на блок. Кнопки
-   вверх/вниз убраны, полоса шире и мягче. WebKit-псевдоэлементы не конфли-
-   куют со стандартными свойствами, поэтому цвет не «мигает» при лайке. */
-::-webkit-scrollbar { width: 16px; height: 16px; }
-::-webkit-scrollbar-track {
-  background: transparent;
-  border-radius: 999px;
-  margin: 4px;
-}
-::-webkit-scrollbar-thumb {
-  border: 4px solid transparent;
-  border-radius: 999px;
-  background: transparent;
-  background-clip: padding-box;
-  box-shadow: none;
-}
-::-webkit-scrollbar-button { width: 0; height: 0; display: none; }
-::-webkit-scrollbar-corner { background: transparent; }
-html.show-scrollbars ::-webkit-scrollbar-track,
-.scroll-hover::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, .04);
-}
-html.show-scrollbars ::-webkit-scrollbar-thumb,
-.scroll-hover::-webkit-scrollbar-thumb {
-  border-color: rgba(8, 10, 12, .85);
-  background: linear-gradient(180deg, #34d399, #38bdf8);
-  background-clip: padding-box;
-  box-shadow: 0 0 14px rgba(52, 211, 153, .35), inset 0 0 0 1px rgba(255, 255, 255, .12);
-}
-html.show-scrollbars ::-webkit-scrollbar-thumb:hover,
-.scroll-hover::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, #5eead4, #7dd3fc);
-  box-shadow: 0 0 18px rgba(94, 234, 212, .5), inset 0 0 0 1px rgba(255, 255, 255, .18);
-}
+/* Полоса невидима, пока по ней не наведешь или не прокрутишь прямо её. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: transparent; border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, .45); }
+.scrolling::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .28); }
+::-webkit-scrollbar-button, ::-webkit-scrollbar-corner { display: none; }
 @supports (-moz-appearance: none) {
-  html, body, * { scrollbar-color: transparent transparent; scrollbar-width: auto; }
-  html.show-scrollbars, html.show-scrollbars *, .scroll-hover {
-    scrollbar-color: #34d399 rgba(255, 255, 255, .04);
-  }
+  * { scrollbar-color: transparent transparent; scrollbar-width: thin; }
+  .scrolling { scrollbar-color: rgba(255, 255, 255, .3) transparent; }
 }
 
 body {
@@ -197,21 +168,21 @@ textarea { resize: vertical; }
 
 .game-shell {
   display: grid;
-  grid-template-columns: 118px minmax(400px, 820px) 450px;
+  grid-template-columns: auto minmax(0, 820px) 450px;
   justify-content: center;
-  align-items: start;
+  align-items: stretch;
   gap: 12px;
   min-height: 100vh;
   padding: 12px 12px 18px;
-  overflow-x: auto;
 }
 
-/* Панель кистей всегда стоит рядом с холстом. Если по высоте не помещается,
-   кнопки сами раскладываются в два вертикальных ряда — скроллбара нет никогда. */
+/* Тонкая панель кистей стоит в своей колонке рядом с холстом и липнет к
+   верху при прокрутке. Если кнопки не помещаются по высоте, они расклады-
+   ваются во второй столбец; скроллбара и обрезанных кнопок нет. */
 .tool-rail {
-  position: fixed;
-  top: 0;
-  left: 0;
+  position: sticky;
+  top: 8px;
+  align-self: start;
   z-index: 40;
   display: grid;
   grid-template-columns: repeat(var(--rail-cols, 1), 34px);
@@ -220,24 +191,15 @@ textarea { resize: vertical; }
   align-content: start;
   justify-content: center;
   gap: 6px 8px;
-  width: 118px;
-  max-height: none;
-  /* Горизонтальные поля подобраны так, чтобы в 118 px помещалось ровно два
-     столбца по 34 px и третий столбец физически не влезал. */
-  padding: 8px 16px;
+  width: max-content;
+  padding: 6px 5px;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
 }
 .rail-control { display: grid; justify-items: center; gap: 2px; width: 34px; flex: none; }
-.rail-caption {
-  color: var(--muted);
-  font-size: 9px;
-  font-weight: 700;
-  line-height: 1.2;
-  text-align: center;
-}
+.rail-caption { display: none; }
 .rail-bg { flex: none; width: 36px; height: 36px; margin: 0 auto; }
 .recent-title { color: var(--muted); font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; }
 /* Кнопки кистей участвуют в general flex-раскладке панели, поэтому при
@@ -269,7 +231,7 @@ textarea { resize: vertical; }
 .tool-rail.disabled .bg-square,
 .tool-rail.disabled .pipette-btn { opacity: .45; }
 
-.stage { grid-column: 2; min-width: 400px; }
+.stage { grid-column: 2; min-width: 0; }
 .wordbar {
   display: flex;
   align-items: center;
@@ -341,16 +303,18 @@ textarea { resize: vertical; }
 .size-toast {
   position: absolute;
   z-index: 10;
-  padding: 4px 8px;
-  border-radius: 6px;
+  padding: 3px 6px;
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: 5px;
   background: rgba(9, 12, 20, .94);
   color: #fff;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
+  line-height: 1.2;
   white-space: nowrap;
   pointer-events: none;
   transform: translate(-50%, -100%);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, .55);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .5);
 }
 .word-reveal {
   position: absolute;
@@ -500,7 +464,7 @@ textarea { resize: vertical; }
 .modal input { margin-bottom: 12px; }
 
 @media (max-width: 1200px) {
-  .game-shell { grid-template-columns: 118px minmax(400px, 1fr) 450px; gap: 8px; padding: 10px 8px 16px; }
+  .game-shell { grid-template-columns: auto minmax(0, 1fr) 450px; gap: 8px; padding: 10px 8px 16px; }
   .side-panel { height: calc(100vh - 26px); max-height: calc(100vh - 26px); }
 }
 @media (max-width: 820px) {
@@ -509,9 +473,8 @@ textarea { resize: vertical; }
   .hero-art { display: none; }
   .create-form, .avatar-editor, .avatar-controls { grid-template-columns: 1fr; }
   .own-room-row { flex-wrap: wrap; }
-  .game-shell { grid-template-columns: 118px minmax(400px, 1fr); padding: 8px; gap: 8px; }
+  .game-shell { grid-template-columns: auto minmax(0, 1fr); padding: 8px; gap: 8px; }
   .stage { grid-column: 2; }
-  .tool-rail { padding: 6px 16px; }
   .side-panel { grid-column: 1 / -1; height: auto; max-height: none; }
   .tab-panel { min-height: 0; }
   /* Как на croch.ru: на узком экране чат под холстом, поле ввода и свежие
@@ -600,20 +563,20 @@ textarea { resize: vertical; }
 
 .canvas-wrap {
   position: relative;
-  width: min(100%, calc(100vh - 210px));
-  min-width: 400px;
+  width: min(100%, 760px);
+  min-width: 0;
   max-width: 760px;
   aspect-ratio: 1 / 1;
   margin: 0 auto;
-  transform-origin: 50% 0;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: #252932;
   box-shadow: 0 16px 40px rgba(0, 0, 0, .45);
-  cursor: none;
 }
-#drawCanvas, #draftCanvas { width: 100%; height: 100%; display: block; cursor: none; }
+/* Нативный курсор прячем только у рисующего: угадывающий видит обычную стрелку. */
+body.can-draw .canvas-wrap, body.can-draw #drawCanvas { cursor: none; }
+#drawCanvas, #draftCanvas { width: 100%; height: 100%; display: block; }
 #draftCanvas { position: absolute; inset: 0; pointer-events: none; }
 .brush-cursor.shape-square { border-radius: 2px; }
 .brush-cursor.shape-circle { border-radius: 50%; }

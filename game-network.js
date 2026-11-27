@@ -295,6 +295,12 @@
           if (data.online === false) {
             if (!drawerMissingSince) drawerMissingSince = Date.now();
             drawerOfflineAt = Date.now();
+            /* Проверяем ход точно по истечении 5-секундного окна, а не только
+               в очередном пятисекундном тике: вернувшийся ведущий успеет
+               вернуть себе ход без смены раунда. */
+            setTimeout(function () {
+              if (!sessionKicked && state) ensureDrawer();
+            }, DRAWER_OFFLINE_MS + 100);
           } else {
             drawerMissingSince = 0;
             drawerSeenAt = Date.now();

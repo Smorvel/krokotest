@@ -20,40 +20,9 @@
       syncDone = true;
     }
 
-    /* На узком экране квадрат уменьшается на месте. Никакого translateY:
-       трансформация не меняет поток документа, поэтому сдвинутый холст
-       перекрывал бы палитру и чат при прокрутке. */
-    var compactQuery = window.matchMedia ? window.matchMedia('(max-width: 820px)') : null;
-    function compactCanvasScale() {
-      if (!el.wrap) return 1;
-      el.wrap.style.transform = '';
-      if (!compactQuery || !compactQuery.matches) return 1;
-      var maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-      var progress = maxScroll > 0 ? Math.min(1, window.scrollY / maxScroll) : 0;
-      var scale = 1 - 0.18 * progress;
-      el.wrap.style.transform = 'scale(' + scale.toFixed(3) + ')';
-      return scale;
-    }
-
-    function layoutBox(node) {
-      var left = 0;
-      var top = 0;
-      for (var current = node; current; current = current.offsetParent) {
-        left += current.offsetLeft || 0;
-        top += current.offsetTop || 0;
-      }
-      return {
-        left: left - (window.scrollX || 0),
-        top: top - (window.scrollY || 0),
-        width: node.offsetWidth,
-        height: node.offsetHeight
-      };
-    }
-
-    /* Ширина панели фиксированная — 118px. Если кнопки не помещаются по
-       высоте, они раскладываются ровно во второй столбец. Скроллбара и
-       обрезанных кнопок нет. За высоту берём собственную высоту содержимого,
-       а не высоту квадрата холста. */
+    /* Панель живёт в собственной колонке сетки и липнет к верху. Холст
+       уменьшается обычной шириной, а не трансформацией: поэтому он и панель
+       всегда занимают своё место в потоке и не перекрывают палитру. */
     function railItems() {
       if (!el.toolRail) return [];
       return [].slice.call(el.toolRail.children).reduce(function (all, node) {
@@ -67,18 +36,14 @@
 
     function alignToolRail() {
       if (!el.toolRail || !el.wrap) return;
-      compactCanvasScale();
-      var box = layoutBox(el.wrap);
-      var railWidth = el.toolRail.offsetWidth || 118;
-      var available = Math.max(120, window.innerHeight - 16);
       var items = railItems();
+      if (!items.length) return;
       var railStyle = getComputedStyle(el.toolRail);
       var rowGap = parseFloat(railStyle.rowGap) || 6;
       var chrome = (parseFloat(railStyle.paddingTop) || 0) +
         (parseFloat(railStyle.paddingBottom) || 0) +
         (parseFloat(railStyle.borderTopWidth) || 0) +
         (parseFloat(railStyle.borderBottomWidth) || 0);
-      if (!items.length) return;
 
       function stackHeight(rows) {
         var height = chrome + rowGap * Math.max(0, rows - 1);
@@ -91,21 +56,18 @@
         return height;
       }
 
+      /* Панель не должна быть выше холста: иначе она заходила бы на палитру.
+         Двух столбцов достаточно, чтобы всё поместилось и на узком окне. */
+      var available = Math.min(el.wrap.offsetHeight - 4, window.innerHeight - 16);
       var cols = 1;
       var rows = items.length;
       var height = stackHeight(rows);
       if (height > available && items.length > 1) {
         cols = 2;
         rows = Math.ceil(items.length / 2);
-        height = stackHeight(rows);
       }
       el.toolRail.style.setProperty('--rail-cols', cols);
       el.toolRail.style.setProperty('--rail-rows', rows);
-      height = Math.max(120, Math.round(height));
-      el.toolRail.style.left = Math.max(4, Math.round(box.left - railWidth - 8)) + 'px';
-      el.toolRail.style.top = Math.round(height > available ? 8 : box.top) + 'px';
-      el.toolRail.style.height = height + 'px';
-      el.toolRail.style.maxHeight = 'none';
     }
 
     G.showConnectionOverlay = showConnectionOverlay;
@@ -157,8 +119,6 @@
     applyMeta();
     alignToolRail();
     window.addEventListener('resize', alignToolRail);
-    window.addEventListener('scroll', alignToolRail, { passive: true });
-    if (compactQuery && compactQuery.addEventListener) compactQuery.addEventListener('change', alignToolRail);
     if (typeof ResizeObserver !== 'undefined') new ResizeObserver(alignToolRail).observe(el.wrap);
     renderAll();
     if (client.connected && !subscribedAt) {

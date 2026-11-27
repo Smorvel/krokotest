@@ -77,7 +77,10 @@
         round: Number(raw.round) || 0,
         until: Number(raw.until) || 0,
         reason: String(raw.reason || ''),
-        guesserId: String(raw.guesserId || '')
+        guesserId: String(raw.guesserId || ''),
+        /* Явный выход ведущего: уход подтверждён, ждать его presence ещё раз
+           не нужно, раунд завершается сразу после паузы со словом. */
+        leave: !!raw.leave
       };
       if (!value.id || !value.word || !value.until) return null;
       if (!value.until || value.until <= Date.now()) return null;
@@ -198,9 +201,10 @@
       /* Задержанная копия не может начать новый раунд, сменив художника без
          подтверждённого ухода предыдущего. Вероятный случай — гость обновил
          страницу и прислал старое состояние с новым номером раунда. */
+      var leftExplicitly = !!(previous.reveal && previous.reveal.leave);
       if (Number(incoming.round) > Number(previous.round) && previous.drawer &&
           incoming.drawer !== previous.drawer && incoming.updatedBy !== previous.drawer &&
-          !drawerConfirmedGone(previous.drawer)) {
+          !leftExplicitly && !drawerConfirmedGone(previous.drawer)) {
         incoming.round = previous.round;
         incoming.wordIndex = previous.wordIndex;
         incoming.startedAt = previous.startedAt;
@@ -266,16 +270,17 @@
          presence в медленном канале НЕ является основанием для захвата хода:
          именно так гость забирала рисование после обновления страницы. */
       if (sameRound && previous.drawer && incoming.drawer !== previous.drawer &&
-          incoming.updatedBy !== previous.drawer) {
+          incoming.updatedBy !== previous.drawer && !leftExplicitly) {
         incoming.drawer = previous.drawer;
         changed = true;
       }
       /* Новый раунд не может сменить художника без подтверждённого ухода
-         предыдущего: иначе задержанная копия забирает ход у живого игрока. */
+         предыдущего: иначе задержанная копия забирает ход у живого игрока.
+         Явный выход уже подтверждён — такой переход принимаем сразу. */
       if (!sameRound && Number(incoming.round) > Number(previous.round) &&
           previous.drawer && incoming.drawer !== previous.drawer &&
           incoming.updatedBy !== previous.drawer &&
-          !drawerConfirmedGone(previous.drawer)) {
+          !leftExplicitly && !drawerConfirmedGone(previous.drawer)) {
         incoming.drawer = previous.drawer;
         changed = true;
       }
@@ -668,7 +673,8 @@
       if (handledRotation === rotationToken) return false;
       /* Ход переводим только владелец хода или игрок, подтвердивший уход
          предыдущего художника. Иначе две копии создают разные раунды. */
-      if (state.drawer && !isDrawer() && !drawerConfirmedGone(state.drawer)) return false;
+      if (state.drawer && !isDrawer() && !(state.reveal && state.reveal.leave) &&
+          !drawerConfirmedGone(state.drawer)) return false;
       if (Date.now() - (Number(lastRotationAt) || 0) < 1500) return false;
       handledRotation = rotationToken;
       lastRotationAt = Date.now();
@@ -814,9 +820,11 @@
       var id = drawerId || (state && state.drawer);
       if (!state || !id) return true;
       if (id === myId && isDrawer()) return false;
-      /* Завещание MQTT приходит сразу при выходе: это подтверждённый уход. */
-      if (id === state.drawer && drawerOfflineAt &&
-          Date.now() - drawerOfflineAt >= DRAWER_OFFLINE_MS) return true;
+      /* Явный обрыв (завещание MQTT) — подтверждённый сигнал. Даже в одиночке
+         ждём 5 секунд: ведущий мог просто обновить страницу и вернуться. */
+      if (id === state.drawer && drawerOfflineAt) {
+        return Date.now() - drawerOfflineAt >= DRAWER_OFFLINE_MS;
+      }
       /* В одиночке ждём только короткий срок доставки retained-presence.
          Полный 15-секундный срок нужен лишь при живых собеседниках. */
       if (soloRoom()) {
@@ -845,6 +853,7 @@
     function isTurnAuthority() {
       if (!state) return false;
       if (isDrawer()) return true;
+      if (state.reveal && state.reveal.leave) return true;
       if (!drawerConfirmedGone()) return false;
       return presentPlayers().some(function (p) { return p.id === myId; });
     }
@@ -868,7 +877,7 @@
       return ids.length > 0 && ids[0] === myId;
     }
 
-    function beginReveal(reason, hitId, durationMs) {
+    function beginReveal(reason, hitId, durationMs, leave) {
       if (!state || state.reveal) return false;
       if (localDraft && isDrawer()) {
         commitStroke(localDraft);
@@ -882,7 +891,8 @@
         round: state.round,
         until: Date.now() + (Number(durationMs) > 0 ? Number(durationMs) : REVEAL_MS),
         reason: label,
-        guesserId: String((state.hitInfo && state.hitInfo.guesserId) || '')
+        guesserId: String((state.hitInfo && state.hitInfo.guesserId) || ''),
+        leave: !!leave
       };
       pauseRoundTimer();
       state.reveal = reveal;
@@ -930,7 +940,7 @@
       leavingRoom = myId;
       drawerOfflineAt = Date.now();
       return beginReveal('Художник вышел.',
-        'leave-' + state.round + ':' + state.startedAt, LEAVE_REVEAL_MS);
+        'leave-' + state.round + ':' + state.startedAt, LEAVE_REVEAL_MS, true);
     }
 
     function ensureDrawer() {
@@ -965,8 +975,11 @@
         state.hitInfo = null;
         state.waitingForPlayers = false;
         if (sawLeave) {
+          /* Обновление страницы: сначала даём ведущему 5 секунд на возврат. */
+          if (state.drawer !== myId && drawerOfflineAt &&
+              Date.now() - drawerOfflineAt < DRAWER_OFFLINE_MS) return;
           beginReveal('Художник вышел.',
-            'leave-' + state.round + ':' + state.startedAt, LEAVE_REVEAL_MS);
+            'leave-' + state.round + ':' + state.startedAt, LEAVE_REVEAL_MS, true);
           return;
         }
         rotateDrawer('Новый раунд');
@@ -983,7 +996,7 @@
       if (!drawerConfirmedGone()) return;
       state.queue = ids;
       beginReveal('Художник вышел.',
-        'leave-' + state.round + ':' + state.startedAt, LEAVE_REVEAL_MS);
+        'leave-' + state.round + ':' + state.startedAt, LEAVE_REVEAL_MS, true);
     }
     G.isCreator = isCreator;
     G.isIdBanned = isIdBanned;

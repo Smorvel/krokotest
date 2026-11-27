@@ -300,64 +300,42 @@
     return !!(state && Array.isArray(state.bans) && state.bans.indexOf(id) >= 0);
   }
 
-  /* Скроллбары скрыты до прокрутки страницы или до момента, когда курсор
-     оказался у полосы. Внутренние прокрутки (чат, настройки) подсвечивают
-     только свою полосу и не мигают глобальной. */
+  /* Полоса появляется только во время прокрутки. Наведение на саму полосу
+     оформляется CSS (::-webkit-scrollbar-thumb:hover): чат при наведении
+     ничего не подсвечивает. Программная прокрутка не создаёт класс. */
   function installScrollbarVisibility() {
-    var root = document.documentElement;
-    var rootTimer = null;
-    var hovered = null;
-    var hoverTimer = null;
+    var active = null;
+    var timer = null;
 
-    function showRoot() {
-      root.classList.add('show-scrollbars');
-      if (rootTimer) clearTimeout(rootTimer);
-      rootTimer = setTimeout(function () { root.classList.remove('show-scrollbars'); }, 1400);
+    function show(el) {
+      var node = el && el.nodeType === 1 ? el : document.documentElement;
+      if (active && active !== node) active.classList.remove('scrolling');
+      active = node;
+      node.classList.add('scrolling');
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(function () {
+        if (active) active.classList.remove('scrolling');
+        active = null;
+      }, 900);
     }
 
-    function isPageTarget(target) {
-      return target === document || target === document.documentElement || target === document.body;
-    }
-
-    function hideHovered() {
-      if (hovered && !hovered.matches(':hover')) {
-        hovered.classList.remove('scroll-hover');
-        hovered = null;
-      }
-    }
-
-    function showElement(el) {
-      if (hovered !== el) {
-        if (hovered) hovered.classList.remove('scroll-hover');
-        hovered = el;
-        if (hovered) hovered.classList.add('scroll-hover');
-      }
-      if (hoverTimer) clearTimeout(hoverTimer);
-      hoverTimer = setTimeout(hideHovered, 900);
-    }
-
-    /* Перехватываем только прокрутку документа: программная прокрутка чата
-       при ответе или лайке не должна мигать общей полосой окна. */
-    document.addEventListener('scroll', function (event) {
-      if (isPageTarget(event.target)) showRoot();
-    }, true);
-    window.addEventListener('mousemove', function (event) {
-      if (event.clientX >= window.innerWidth - 20 || event.clientY >= window.innerHeight - 20) showRoot();
-      var el = event.target && event.target.nodeType === 1 ? event.target : null;
-      while (el && el !== document.body) {
+    function onGesture(event) {
+      if (event.defaultPrevented) return;
+      var el = event.target && event.target.nodeType === 1 ? event.target : document.body;
+      while (el && el !== document.documentElement) {
         var style = window.getComputedStyle(el);
         if ((style.overflowY === 'auto' || style.overflowY === 'scroll') &&
             el.scrollHeight > el.clientHeight + 2) {
-          showElement(el);
+          show(el);
           return;
         }
         el = el.parentElement;
       }
-      showElement(null);
-    }, { passive: true });
-    window.addEventListener('touchstart', function (event) {
-      if (isPageTarget(event.target)) showRoot();
-    }, { passive: true });
+      show(document.documentElement);
+    }
+
+    document.addEventListener('wheel', onGesture, { passive: true });
+    document.addEventListener('touchmove', onGesture, { passive: true });
   }
 
   installScrollbarVisibility();

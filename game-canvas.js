@@ -64,6 +64,7 @@
   
     canvas.addEventListener('pointermove', function (event) {
       updateCursor(event);
+      if (el.sizeToast && !el.sizeToast.hidden) placeSizeToast(event);
       if (!drawing || !localDraft) return;
       if (drawingBlocked()) { endStroke(event, false); return; }
       event.preventDefault();
@@ -125,12 +126,20 @@
     canvas.addEventListener('pointerleave', function () { if (!drawing) el.cursor.hidden = true; });
 
     var sizeToastTimer = null;
+    /* Подсказка привязана к курсору-кисти: следует за мышью и висит сразу
+       над кружком выбранного размера. */
+    function placeSizeToast(event) {
+      if (!el.sizeToast || !el.wrap) return;
+      var rect = el.wrap.getBoundingClientRect();
+      var brush = el.cursor && !el.cursor.hidden ? el.cursor.offsetHeight : 0;
+      var lift = Math.max(16, Math.round(brush / 2) + 8);
+      el.sizeToast.style.left = Math.round(event.clientX - rect.left) + 'px';
+      el.sizeToast.style.top = Math.max(16, Math.round(event.clientY - rect.top - lift)) + 'px';
+    }
     function showSizeToast(event, size) {
       if (!el.sizeToast) return;
-      var rect = el.wrap.getBoundingClientRect();
       el.sizeToast.textContent = size + 'px';
-      el.sizeToast.style.left = Math.round(event.clientX - rect.left) + 'px';
-      el.sizeToast.style.top = Math.max(24, Math.round(event.clientY - rect.top - 18)) + 'px';
+      placeSizeToast(event);
       el.sizeToast.hidden = false;
       if (sizeToastTimer) clearTimeout(sizeToastTimer);
       sizeToastTimer = setTimeout(function () { el.sizeToast.hidden = true; }, 2000);

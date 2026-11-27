@@ -22,7 +22,10 @@
   G.LEAVE_REVEAL_MS = 3000;
   G.SOLO_GRACE_MS = 900;
   G.PRESENCE_TS_TTL_MS = 30000;
-  G.DRAWER_OFFLINE_MS = 1000;
+  /* Обрыв соединения (например, обновление страницы) даёт ведущему 5 секунд
+     на повторное подключение. Если за это время он не вернулся, раунд
+     завершается у остальных игроков по завещанию MQTT. */
+  G.DRAWER_OFFLINE_MS = 5000;
   G.HISTORY_LIMIT = 30;
   /* Drawing history is never discarded. Old strokes are rasterized instead. */
   G.STROKE_SOFT_LIMIT = 160;
