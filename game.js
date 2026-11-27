@@ -16,6 +16,8 @@
       /* Художник периодически рассылает полный холст: если отдельное событие
          штриха потерялось, следующий снимок всё равно восстановит его у всех. */
       if (state && isDrawer()) publishCanvasSnapshot();
+      if (state && state.hitInfo) scheduleHitResolution(state.hitInfo);
+      if (state && state.reveal && Number(state.reveal.until) <= Date.now()) finishReveal(state.reveal);
       if (state) ensureDrawer();
       checkTimeout();
       issueHintIfNeeded();

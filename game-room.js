@@ -196,35 +196,22 @@
       var previousRoundNum = Number(previous.round) || 0;
       var newerRound = incomingRound > previousRoundNum;
       var olderRound = incomingRound < previousRoundNum;
-      var authored = !!incoming.updatedBy && incoming.updatedBy === incoming.drawer;
       var incomingStrokes = incoming.strokes || [];
       var previousStrokes = previous.strokes || [];
       if (olderRound) {
         incoming.strokes = previousStrokes.slice();
         incoming.canvasSeq = previousSeq;
         changed = true;
-      } else if (newerRound || (sameRound && authored && incomingSeq >= previousSeq)) {
+      } else if (newerRound) {
         incoming.strokes = incomingStrokes.slice();
-        if (strokeIds(incoming.strokes).join(',') !== strokeIds(previousStrokes).join(',')) changed = true;
-      } else if (sameRound && !authored && incomingSeq > previousSeq) {
-        incoming.strokes = previousStrokes.slice();
-        incoming.canvasSeq = previousSeq;
-      } else if (sameRound && incomingSeq === previousSeq) {
-        var ids = {};
-        var strokes = incomingStrokes.slice();
-        strokes.forEach(function (stroke) { ids[stroke.id] = true; });
-        previousStrokes.forEach(function (stroke) {
-          if (!ids[stroke.id]) {
-            strokes.push(stroke);
-            ids[stroke.id] = true;
-            changed = true;
-          }
-        });
-        incoming.strokes = strokes;
-      } else {
-        incoming.strokes = previousStrokes.slice();
-        incoming.canvasSeq = previousSeq;
+        incoming.canvasSeq = incomingSeq;
         changed = true;
+      } else {
+        /* Рисунок приходит только из canvas/<round> и stroke/<id>.
+           Общее состояние больше не заменяет уже полученный холст. */
+        incoming.strokes = previousStrokes.slice();
+        incoming.canvasSeq = previousSeq;
+        if (strokeIds(incoming.strokes).join(',') !== strokeIds(previousStrokes).join(',')) changed = true;
       }
 
       /* Фон задаёт текущий художник: чужие устаревшие копии его не перебивают. */
@@ -290,7 +277,57 @@
       K.publish(client, K.topic(room, 'state'), state, true);
       if (typeof renderSync === 'function') renderSync();
     }
-  
+
+    /* Сообщение чата и факт угадывания публикуются отдельно от общего
+       состояния: их нельзя потерять из-за устаревшей копии state. */
+    function publishChatEvent(message, hit) {
+      if (sessionKicked || !state || !client || !client.connected || !message || !message.id) return;
+      K.publish(client, K.topic(room, 'chat/' + message.id), {
+        round: state.round,
+        message: message,
+        hit: hit || null,
+        at: Date.now()
+      }, true);
+    }
+
+    function applyChatEvent(data) {
+      if (!state || !data || !data.message || !data.message.id) return false;
+      if (data.round && Number(data.round) !== Number(state.round)) return false;
+      var changed = false;
+      var id = data.message.id;
+      if (!state.messages.some(function (m) { return m.id === id; })) {
+        state.messages.push(data.message);
+        state.messages = state.messages.slice(-50);
+        changed = true;
+      }
+      var hit = data.hit;
+      if (hit) {
+        (hit.guessedWords || []).forEach(function (key) {
+          if (state.guessedWords.indexOf(key) < 0) {
+            state.guessedWords.push(key);
+            changed = true;
+          }
+        });
+        if (hit.scoreName && hit.score) {
+          var current = Number(state.scores[hit.scoreName]) || 0;
+          if (Number(hit.score) > current) {
+            state.scores[hit.scoreName] = Number(hit.score);
+            changed = true;
+          }
+        }
+        if (hit.hitInfo && !state.hitInfo) {
+          state.hitInfo = hit.hitInfo;
+          scheduleHitResolution(hit.hitInfo);
+          changed = true;
+        }
+      }
+      if (changed) {
+        renderAll();
+        if (isDrawer()) publishState();
+      }
+      return changed;
+    }
+
     function publishPresence(online) {
       if (sessionKicked || !client || !client.connected) return;
       K.publish(client, K.topic(room, 'presence/' + myId), {
@@ -369,7 +406,6 @@
       }
 
       if (!data.stroke || data.stroke.id !== id) return false;
-      if (state.drawer && data.owner && data.owner !== state.drawer && data.stroke.tool !== 'raster') return false;
       if (currentSeq > seq) return false;
       if (state.strokes.some(function (item) { return item.id === id; })) {
         state.canvasSeq = Math.max(currentSeq, seq);
@@ -411,7 +447,6 @@
 
     function applyCanvasSnapshot(data) {
       if (!state || !data || !Array.isArray(data.strokes)) return false;
-      if (data.by && state.drawer && data.by !== state.drawer) return false;
       if (data.round && Number(data.round) !== Number(state.round)) return false;
       var seq = Number(data.seq) || 0;
       if (seq < (Number(state.canvasSeq) || 0)) return false;
@@ -562,7 +597,7 @@
       return players[0].id === myId;
     }
 
-    function beginReveal(reason) {
+    function beginReveal(reason, hitId) {
       if (!state || state.reveal) return false;
       if (localDraft && isDrawer()) {
         commitStroke(localDraft);
@@ -570,7 +605,7 @@
       }
       var currentWord = word();
       var reveal = {
-        id: K.uid(),
+        id: hitId || K.uid(),
         word: currentWord,
         round: state.round,
         until: Date.now() + REVEAL_MS,
@@ -614,7 +649,7 @@
       handledHitId = info.id;
       showHitAnimation(info);
       var reason = (state && state.hitInfo && state.hitInfo.reason) || info.reason || 'Все слова угаданы!';
-      beginReveal(reason);
+      beginReveal(reason, info.id);
     }
 
     function endRoundOnLeave() {
@@ -683,6 +718,8 @@
     G.presentPlayers = presentPlayers;
     G.isDrawer = isDrawer;
     G.publishState = publishState;
+    G.publishChatEvent = publishChatEvent;
+    G.applyChatEvent = applyChatEvent;
     G.publishPresence = publishPresence;
     G.publishDraft = publishDraft;
     G.publishStroke = publishStroke;

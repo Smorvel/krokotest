@@ -53,6 +53,7 @@
       client.subscribe(K.topic(room, 'draft/+'), { qos: 1 });
       client.subscribe(K.topic(room, 'stroke/+'), { qos: 1 });
       client.subscribe(K.topic(room, 'canvas/+'), { qos: 1 });
+      client.subscribe(K.topic(room, 'chat/+'), { qos: 1 });
       subscribedAt = Date.now();
       presenceReadyAt = subscribedAt + 5000;
       publishPresence(true);
@@ -183,6 +184,13 @@
           remoteDrafts[data.id].pendingUntil = Date.now() + 8000;
         }
         scheduleDrafts();
+        return;
+      }
+
+      if (topic.indexOf(K.topic(room, 'chat/')) === 0) {
+        if (!data || !data.message) return;
+        if (isPlayerBanned(data.message)) return;
+        applyChatEvent(data);
         return;
       }
 

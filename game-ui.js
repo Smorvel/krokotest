@@ -27,10 +27,11 @@
       var text = el.chatInput.value.trim();
       if (!text) return;
       var result = !isDrawer() ? checkAnswer(text) : { hit: false, newWords: [] };
-      state.messages.push({
+      var message = {
         id: K.uid(), ownerId: myId, name: profile.name, color: profile.color,
         text: text, hit: result.hit, round: state.round, at: Date.now()
-      });
+      };
+      state.messages.push(message);
       state.messages = state.messages.slice(-50);
       el.chatInput.value = '';
   
@@ -39,6 +40,7 @@
           systemMessage('Слово «' + target.display + '» присутствует в загадке!');
         });
       }
+      var hitPayload = null;
       if (result.hit) {
         state.scores[profile.name] = (state.scores[profile.name] || 0) + 10;
         var single = result.targets.length === 1;
@@ -52,9 +54,16 @@
           reason: reason,
           at: Date.now()
         };
+        hitPayload = {
+          guessedWords: result.newWords.map(function (target) { return target.key; }),
+          scoreName: profile.name,
+          score: state.scores[profile.name],
+          hitInfo: state.hitInfo
+        };
         showHitAnimation(state.hitInfo);
         scheduleHitResolution(state.hitInfo);
       }
+      publishChatEvent(message, hitPayload);
       publishState();
       renderAll();
     });
