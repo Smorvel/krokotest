@@ -38,8 +38,8 @@
         return value ? '<span class="react-mark">' + reactionIcon(value) + '</span>' : '';
       }
       return '<span class="reaction-slot">' +
-        '<button class="react-btn' + (value === 'like' ? ' active' : '') + '" type="button" data-react="like" data-msg="' + K.escapeHtml(message.id) + '" aria-label="Лайк">👍</button>' +
-        '<button class="react-btn' + (value === 'dislike' ? ' active' : '') + '" type="button" data-react="dislike" data-msg="' + K.escapeHtml(message.id) + '" aria-label="Дизлайк">👎</button>' +
+        '<button class="react-btn' + (value === 'like' ? ' active' : '') + '" type="button" data-react="like" data-msg="' + K.escapeHtml(message.id) + '" aria-label="Лайк">' + (ICONS.like || '') + '</button>' +
+        '<button class="react-btn' + (value === 'dislike' ? ' active' : '') + '" type="button" data-react="dislike" data-msg="' + K.escapeHtml(message.id) + '" aria-label="Дизлайк">' + (ICONS.dislike || '') + '</button>' +
         '</span>';
     }
   
@@ -146,8 +146,10 @@
       else if (canDraw) el.status.textContent = 'Вы рисуете слово. Остальные угадывают!';
       else el.status.textContent = 'Вы угадываете. Рисунок виден без затемнения!';
       el.sync.textContent = client && client.connected ? 'онлайн-синхронизация' : 'переподключение...';
-      el.chatInput.disabled = isBannedMe() || isHitPaused();
-      el.chatInput.placeholder = isHitPaused() ? 'Пауза — смотрите анимацию...' : 'Напиши слово...';
+      el.chatInput.disabled = isDrawer() || isBannedMe() || isHitPaused();
+      el.chatInput.placeholder = isDrawer()
+        ? 'Вы рисуете — чат недоступен'
+        : (isHitPaused() ? 'Пауза — смотрите анимацию...' : 'Напиши слово...');
   
       el.roomBadge.hidden = !isCreator();
       el.settingsRoomName.textContent = (meta && meta.name) || room;

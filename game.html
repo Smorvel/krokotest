@@ -33,11 +33,11 @@
       <div class="rail-sep"></div>
       <div class="rail-control">
         <button class="knob" id="sizeKnob" type="button" aria-label="Размер кисти"></button>
-        <span class="rail-caption" id="sizeCaption">размер<br>пикселей</span>
+        <span class="rail-caption" id="sizeCaption">18px</span>
       </div>
       <div class="rail-control">
         <button class="knob alpha-knob" id="alphaKnob" type="button" aria-label="Прозрачность кисти"></button>
-        <span class="rail-caption" id="alphaCaption">прозрачность<br>пикселей</span>
+        <span class="rail-caption" id="alphaCaption">100%</span>
       </div>
 
       <div class="rail-sep"></div>
@@ -171,10 +171,6 @@
       <b id="paletteTitle">Цвет кисти</b>
       <button class="popover-close" id="palettePopoverClose" type="button" aria-label="Закрыть">×</button>
     </div>
-    <div class="palette-targets" id="paletteTargets">
-      <button class="palette-target active" type="button" data-target="ink">Кисть</button>
-      <button class="palette-target" type="button" data-target="bg">Фон</button>
-    </div>
     <div class="palette-preview">
       <span class="palette-current" id="paletteCurrent"></span>
       <label class="palette-hex-label">
@@ -186,9 +182,6 @@
       <span class="palette-sv-handle" id="paletteSvHandle"></span>
     </div>
     <input class="palette-hue" id="paletteHue" type="range" min="0" max="360" step="1" value="210" aria-label="Оттенок">
-    <div class="palette-grid" id="paletteGrid"></div>
-    <div class="recent-title">Недавние</div>
-    <div class="palette-recent" id="paletteRecent"></div>
   </div>
 
   <div class="screen-overlay" id="loadingOverlay" role="status" aria-live="polite">

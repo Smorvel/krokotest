@@ -10,8 +10,8 @@
       el.sizeKnob.style.setProperty('--knob-fill', tool.color);
       el.alphaKnob.style.setProperty('--knob-fill', tool.color);
       el.alphaKnob.style.setProperty('--knob-alpha', (tool.alpha / 100).toFixed(2));
-      el.sizeCaption.innerHTML = 'размер<br>' + tool.size + ' пикселей';
-      el.alphaCaption.innerHTML = 'прозрачность<br>' + tool.alpha + ' пикселей';
+      el.sizeCaption.textContent = tool.size + 'px';
+      el.alphaCaption.textContent = tool.alpha + '%';
       el.sizeKnob.title = 'Размер: ' + tool.size + ' пикселей. Тяните вверх или вниз, клик — палитра цвета.';
       el.alphaKnob.title = 'Прозрачность: ' + tool.alpha + '%. Тяните вверх или вниз.';
     }
