@@ -18,6 +18,7 @@
   G.MAX_ROUND_MS = 60 * 60 * 1000;
   G.HIT_PAUSE_MS = 2400;
   G.REVEAL_MS = 3600;
+  G.TIMEOUT_REVEAL_MS = 3000;
   G.LEAVE_REVEAL_MS = 3000;
   G.SOLO_GRACE_MS = 900;
   G.PRESENCE_TS_TTL_MS = 30000;
@@ -153,6 +154,11 @@
     paletteSvHandle: document.getElementById('paletteSvHandle'),
     paletteHue: document.getElementById('paletteHue'),
     palettePopoverClose: document.getElementById('palettePopoverClose'),
+    popoverSize: document.getElementById('popoverSize'),
+    popoverSizeValue: document.getElementById('popoverSizeValue'),
+    popoverAlpha: document.getElementById('popoverAlpha'),
+    popoverAlphaValue: document.getElementById('popoverAlphaValue'),
+    sizeToast: document.getElementById('sizeToast'),
     loadingOverlay: document.getElementById('loadingOverlay'),
     loadingOverlayText: document.getElementById('loadingOverlayText'),
     loadingOverlayHint: document.getElementById('loadingOverlayHint'),

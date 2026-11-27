@@ -123,12 +123,26 @@
     document.addEventListener('pointerup', function (event) { if (drawing) endStroke(event); });
     document.addEventListener('pointercancel', function (event) { if (drawing) endStroke(event); });
     canvas.addEventListener('pointerleave', function () { if (!drawing) el.cursor.hidden = true; });
+
+    var sizeToastTimer = null;
+    function showSizeToast(event, size) {
+      if (!el.sizeToast) return;
+      var rect = el.wrap.getBoundingClientRect();
+      el.sizeToast.textContent = size + 'px';
+      el.sizeToast.style.left = Math.round(event.clientX - rect.left) + 'px';
+      el.sizeToast.style.top = Math.max(24, Math.round(event.clientY - rect.top - 18)) + 'px';
+      el.sizeToast.hidden = false;
+      if (sizeToastTimer) clearTimeout(sizeToastTimer);
+      sizeToastTimer = setTimeout(function () { el.sizeToast.hidden = true; }, 2000);
+    }
+
     canvas.addEventListener('wheel', function (event) {
       if (!isDrawer() || isBannedMe()) return;
       event.preventDefault();
-      setKnobValue('size', tool.size + (event.deltaY < 0 ? 2 : -2));
+      var next = setKnobValue('size', tool.size + (event.deltaY < 0 ? 2 : -2));
       K.setProfile(profile);
       updateCursor(event);
+      showSizeToast(event, next);
     }, { passive: false });
     G.endStroke = endStroke;
   }

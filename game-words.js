@@ -87,11 +87,26 @@
       return '';
     }
   
-    function reactionIcon(value) {
+    function reactionInfo(id) {
+      var reaction = state && state.reactions && state.reactions[id];
+      if (!reaction) return { value: '', muted: false };
+      if (reaction.value === 'like' || reaction.value === 'dislike') {
+        return { value: reaction.value, muted: false };
+      }
+      var previous = reaction.lastValue === 'like' || reaction.lastValue === 'dislike'
+        ? reaction.lastValue
+        : (Array.isArray(reaction.likes) && reaction.likes.length
+          ? 'like'
+          : (Array.isArray(reaction.dislikes) && reaction.dislikes.length ? 'dislike' : ''));
+      return { value: previous, muted: !!previous };
+    }
+
+    function reactionIcon(value, muted) {
       if (value !== 'like' && value !== 'dislike') return '';
       var icon = value === 'like' ? ICONS.like : ICONS.dislike;
       var label = value === 'like' ? 'Лайк' : 'Дизлайк';
-      return '<span class="react-mark ' + value + '" aria-label="' + label + '">' + (icon || '') + '</span>';
+      return '<span class="react-mark ' + value + (muted ? ' muted' : '') +
+        '" aria-label="' + label + (muted ? ' (снято)' : '') + '">' + (icon || '') + '</span>';
     }
   
     function selectedDictionaryIds() {
@@ -165,6 +180,7 @@
     G.maskPhrase = maskPhrase;
     G.displayCharacters = displayCharacters;
     G.reactionValue = reactionValue;
+    G.reactionInfo = reactionInfo;
     G.reactionIcon = reactionIcon;
     G.selectedDictionaryIds = selectedDictionaryIds;
     G.dictionariesByIds = dictionariesByIds;

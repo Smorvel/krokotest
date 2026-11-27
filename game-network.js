@@ -274,6 +274,23 @@
       if (topic.indexOf(K.topic(room, 'presence/')) === 0) {
         if (!data.id) return;
         if (isPlayerBanned(data)) return;
+        /* Обычная и приватная вкладки одного браузера не обмениваются
+           BroadcastChannel/localStorage, но имеют общий отпечаток. MQTT
+           гарантирует, что останется только самая свежая вкладка. */
+        if (data.online !== false && data.fingerprint && data.fingerprint === myFingerprint && data.id !== myId) {
+          var incomingAt = Number(data.sessionClaimAt) || Number(data.ts) || 0;
+          var incomingSeq = Number(data.sessionClaimSeq) || 0;
+          var localAt = Number(G.sessionClaimAt) || 0;
+          var localSeq = Number(G.sessionClaimSeq) || 0;
+          var incomingIsNewer = incomingAt > localAt || (incomingAt === localAt && incomingSeq > localSeq);
+          if (incomingIsNewer) {
+            kickForDuplicateSession();
+            return;
+          }
+          /* Более старую вкладку не показываем как живого игрока: она всё
+             равно будет вытеснена, но её presence не должен менять ход. */
+          return;
+        }
         if (data.id === (state && state.drawer)) {
           if (data.online === false) {
             if (!drawerMissingSince) drawerMissingSince = Date.now();
@@ -391,6 +408,7 @@
         waitingForPlayers: false,
         expiredAt: 0
       });
+      resetRoundTimer();
       chooseNextWord();
       systemMessage('Комната «' + (meta ? meta.name : 'Общая') + '» готова. Удачи!');
       handledStart = 0;
@@ -409,9 +427,7 @@
         /* Комнату создаёт самый ранний из присутствующих. Позже вошедший игрок
            ждёт дольше и не пересоздаёт чужую комнату: именно преждевременный
            createInitialState обнулял холст у ведущего. */
-        if (meta && meta.creatorId &&
-            !(meta.creatorId === myId ||
-              (meta.creatorFingerprint && meta.creatorFingerprint === myFingerprint))) return;
+        if (meta && (meta.creatorId || meta.creatorFingerprint) && !isCreator()) return;
         /* Retained-presence с прошедшим ts не считается живым игроком: иначе
            пустая комната ждёт 12 секунд и выбирает Drawer-призрака. */
         var peers = activePeers();

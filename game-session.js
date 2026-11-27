@@ -76,6 +76,7 @@
 
   G.sessionTabId = tabId;
   G.sessionClaimAt = claimAt;
+  G.sessionClaimSeq = claimSeq;
   G.kickForDuplicateSession = kick;
   G.kickForBan = kickForBan;
 })(window.KROKO_GAME);

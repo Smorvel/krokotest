@@ -2,10 +2,12 @@
 (function (G) {
   with (G) {
     function isCreator() {
-      return !!(meta && (
-        (meta.creatorId && meta.creatorId === myId) ||
-        (meta.creatorFingerprint && meta.creatorFingerprint === myFingerprint)
-      ));
+      if (!meta) return false;
+      /* Если в комнате сохранён ID создателя, следующий за него отпечаток
+         браузера прав не даёт: иначе приватная вкладка того же браузера
+         считала бы себя создателем и создавала вторую игру. */
+      if (meta.creatorId) return meta.creatorId === myId;
+      return !!(meta.creatorFingerprint && meta.creatorFingerprint === myFingerprint);
     }
   
     function isIdBanned(id) {
@@ -29,7 +31,42 @@
     }
   
     function isHitPaused() {
-      return !!(state && state.pausedUntil && Date.now() < state.pausedUntil);
+      return !!(state && (state.hitInfo || (state.pausedUntil && Date.now() < state.pausedUntil)));
+    }
+
+    /* Единые часы раунда. Пока идёт игра, источник времени — абсолютный
+       deadline из state. На паузе/раскрытии оставшееся время фиксируется в
+       remainingMs, поэтому таймер не убегает вперёд и не зависит от локально
+       выбранного startedAt. */
+    function roundDeadline() {
+      if (!state) return 0;
+      var deadline = Number(state.deadline) || 0;
+      if (deadline) return deadline;
+      if (!Number(state.roundMs)) return 0;
+      return (Number(state.startedAt) || 0) + Number(state.roundMs);
+    }
+
+    function remainingRoundMs() {
+      if (!state || !Number(state.roundMs)) return 0;
+      if (state.reveal || isHitPaused()) return Math.max(0, Number(state.remainingMs) || 0);
+      var deadline = roundDeadline();
+      return deadline ? Math.max(0, deadline - Date.now()) : 0;
+    }
+
+    function resetRoundTimer() {
+      if (!state) return;
+      state.startedAt = Date.now();
+      state.deadline = Number(state.roundMs) ? state.startedAt + Number(state.roundMs) : 0;
+      state.remainingMs = 0;
+      state.pausedUntil = 0;
+    }
+
+    function pauseRoundTimer() {
+      if (!state) return;
+      var left = remainingRoundMs();
+      state.remainingMs = left;
+      state.deadline = 0;
+      state.pausedUntil = 0;
     }
 
     function normalizeReveal(raw) {
@@ -85,6 +122,8 @@
       s.startedAt = Number(s.startedAt) || Date.now();
       var roundMs = Number(s.roundMs);
       s.roundMs = isFinite(roundMs) && roundMs >= 0 && roundMs <= MAX_ROUND_MS ? roundMs : DEFAULT_ROUND_MS;
+      s.deadline = Number(s.deadline) || 0;
+      s.remainingMs = Number(s.remainingMs) || 0;
       /* Общее состояние никогда не несёт рисунок и его версию. Источник
          холста — только canvas/<round> и stroke/<id>. */
       s.strokes = [];
@@ -99,7 +138,13 @@
               : (Array.isArray(raw.likes) && raw.likes.length
                 ? 'like'
                 : (Array.isArray(raw.dislikes) && raw.dislikes.length ? 'dislike' : ''));
-            acc[id] = { value: value };
+            var previous = raw.lastValue === 'like' || raw.lastValue === 'dislike' ? raw.lastValue : value;
+            acc[id] = {
+              value: value,
+              lastValue: previous,
+              by: typeof raw.by === 'string' ? raw.by : '',
+              at: Number(raw.at) || 0
+            };
             return acc;
           }, {})
         : {};
@@ -186,7 +231,9 @@
       Object.keys(previous.reactions || {}).forEach(function (id) {
         var old = previous.reactions[id];
         var current = reactions[id];
-        if (old && old.value && (!current || !current.value)) {
+        /* value:'' — осознанное снятие реакции, а не отсутствие данных.
+           Такую запись нельзя «восстановить» старой копией состояния. */
+        if (old && old.value && !current) {
           reactions[id] = old;
           changed = true;
         }
@@ -249,20 +296,43 @@
         });
         incoming.guessedWords = guesses;
 
+        var restoredPause = false;
         if (previous.reveal && Number(previous.reveal.until) > Date.now() && !incoming.reveal) {
           incoming.reveal = previous.reveal;
           incoming.hitInfo = null;
+          restoredPause = true;
           changed = true;
         }
         if (!incoming.reveal && previous.hitInfo && !incoming.hitInfo &&
             Number(previous.hitInfo.at) > Number(incoming.hitInfo && incoming.hitInfo.at)) {
           incoming.hitInfo = previous.hitInfo;
+          restoredPause = true;
           changed = true;
         }
         if (!incoming.reveal) {
           var paused = Math.max(Number(incoming.pausedUntil) || 0, Number(previous.pausedUntil) || 0);
           if (paused !== (Number(incoming.pausedUntil) || 0)) {
             incoming.pausedUntil = paused;
+            restoredPause = true;
+            changed = true;
+          }
+        }
+        /* Часы раунда — часть общего состояния. На паузе держим локальный
+           остаток; в обычном ходе берём более свежий deadline, чтобы задержанная
+           копия не вернула секунды назад. */
+        if (restoredPause && (previous.reveal || previous.hitInfo || previous.pausedUntil)) {
+          incoming.remainingMs = Number(previous.remainingMs) || 0;
+          incoming.deadline = Number(previous.deadline) || 0;
+          changed = true;
+        } else if (!incoming.reveal && !incoming.hitInfo && !previous.reveal && !previous.hitInfo &&
+                   Number(incoming.roundMs)) {
+          var incomingDeadline = Number(incoming.deadline) || 0;
+          var previousDeadline = Number(previous.deadline) || 0;
+          var usePrevious = previousDeadline && (!incomingDeadline ||
+            Number(previous.updatedAt) > Number(incoming.updatedAt));
+          if (usePrevious) {
+            incoming.deadline = previousDeadline;
+            incoming.remainingMs = Number(previous.remainingMs) || 0;
             changed = true;
           }
         }
@@ -301,9 +371,19 @@
     function isDrawer() {
       return !sessionKicked && !!state && state.drawer === myId && !isBannedMe();
     }
-  
+
+    /* Ход, создатель и лидер завершения раунда ведут общее состояние.
+       Обычный игрок не пересылает чужие копии state обратно: именно эти
+       эхо-публикации создавали вечный ping-pong с новым updatedAt. */
+    function isStatePublisher() {
+      if (!state) return true;
+      if (isDrawer() || isCreator()) return true;
+      if (state.reveal && isRevealLeader()) return true;
+      return !state.drawer;
+    }
+
     function publishState() {
-      if (sessionKicked || !state || !client || !client.connected) return;
+      if (sessionKicked || !state || !client || !client.connected || !isStatePublisher()) return;
       state.updatedAt = Date.now();
       state.updatedBy = myId;
       /* Общее состояние НИКОГДА не несёт рисунок. Единственный источник
@@ -376,7 +456,10 @@
         fingerprint: myFingerprint,
         joinedAt: sessionJoinedAt,
         online: online !== false,
-        ts: Date.now()
+        ts: Date.now(),
+        sessionTabId: G.sessionTabId || '',
+        sessionClaimAt: Number(G.sessionClaimAt) || 0,
+        sessionClaimSeq: Number(G.sessionClaimSeq) || 0
       }, true);
     }
   
@@ -622,7 +705,7 @@
       var endingAt = state.startedAt;
       chooseNextWord();
       state.round += 1;
-      state.startedAt = Date.now();
+      resetRoundTimer();
       Object.keys(rasterImages).forEach(function (id) { delete rasterImages[id]; });
       Object.keys(rasterBgCache).forEach(function (id) { delete rasterBgCache[id]; });
       rasterBgCacheKeys.length = 0;
@@ -684,26 +767,26 @@
 
     function checkTimeout() {
       if (!state || state.reveal || isHitPaused() || state.roundMs === 0) return;
-      var expired = Date.now() - state.startedAt >= state.roundMs;
-      if (!expired) return;
+      var deadline = roundDeadline();
+      if (!deadline || Date.now() < deadline) return;
       if (!isTurnAuthority()) return;
       if (handledStart === state.startedAt) return;
 
-      /* Никто не угадал — слово не показываем, сразу начинаем новый раунд. */
+      /* Таймаут — такой же конец раунда, как угадывание: слово показывается
+       всем, рисунок сохраняется, затем обычный переход к следующему ходу. */
       handledStart = state.startedAt;
       state.waitingForPlayers = false;
       state.expiredAt = 0;
       state.lastWord = null;
       state.hitInfo = null;
-      rotateDrawer('Время вышло!');
-      publishState();
-      renderAll();
+      beginReveal('Время вышло!',
+        'timeout-' + state.round + ':' + state.startedAt, TIMEOUT_REVEAL_MS);
     }
   
     function issueHintIfNeeded() {
       if (!state || state.reveal || state.hintsDisabled || state.roundMs === 0 || state.hintSent || isHitPaused()) return;
       if (!isDrawer()) return;
-      if (Date.now() - state.startedAt < state.roundMs * 0.9) return;
+      if (roundDeadline() - Date.now() > state.roundMs * 0.1) return;
       state.hintSent = true;
       systemMessage('Подсказка: ' + maskPhrase(word()));
       publishState();
@@ -801,10 +884,10 @@
         reason: label,
         guesserId: String((state.hitInfo && state.hitInfo.guesserId) || '')
       };
+      pauseRoundTimer();
       state.reveal = reveal;
       state.lastWord = null;
       state.hitInfo = null;
-      state.pausedUntil = 0;
       drawing = false;
       localDraft = null;
       remoteDrafts = {};
@@ -940,5 +1023,10 @@
     G.scheduleHitResolution = scheduleHitResolution;
     G.endRoundOnLeave = endRoundOnLeave;
     G.ensureDrawer = ensureDrawer;
+    G.isStatePublisher = isStatePublisher;
+    G.roundDeadline = roundDeadline;
+    G.remainingRoundMs = remainingRoundMs;
+    G.resetRoundTimer = resetRoundTimer;
+    G.pauseRoundTimer = pauseRoundTimer;
   }
 })(window.KROKO_GAME);

@@ -14,6 +14,15 @@
       el.alphaCaption.textContent = tool.alpha + '%';
       el.sizeKnob.title = 'Размер: ' + tool.size + ' пикселей. Тяните вверх или вниз, клик — палитра цвета.';
       el.alphaKnob.title = 'Прозрачность: ' + tool.alpha + '%. Тяните вверх или вниз, клик — 100%.';
+      syncPopoverSliders();
+    }
+
+    function syncPopoverSliders() {
+      if (!el.popoverSize || !el.popoverAlpha) return;
+      el.popoverSize.value = tool.size;
+      el.popoverSizeValue.textContent = tool.size + 'px';
+      el.popoverAlpha.value = tool.alpha;
+      el.popoverAlphaValue.textContent = tool.alpha + '%';
     }
   
     function setKnobValue(kind, value) {
@@ -70,7 +79,24 @@
   
     el.sizeKnob.addEventListener('pointerdown', function (event) { beginKnobDrag(event, 'size'); });
     el.alphaKnob.addEventListener('pointerdown', function (event) { beginKnobDrag(event, 'alpha'); });
-  
+
+    /* Горизонтальные ползунки в верхней части палитры. Старый способ —
+       нажать на кружок и тянуть вверх/вниз — остаётся без изменений. */
+    if (el.popoverSize) {
+      el.popoverSize.addEventListener('input', function () {
+        setKnobValue('size', Number(this.value));
+        refreshCursor();
+      });
+      el.popoverSize.addEventListener('change', function () { K.setProfile(profile); });
+    }
+    if (el.popoverAlpha) {
+      el.popoverAlpha.addEventListener('input', function () {
+        setKnobValue('alpha', Number(this.value));
+        refreshCursor();
+      });
+      el.popoverAlpha.addEventListener('change', function () { K.setProfile(profile); });
+    }
+
     /* Панель инструментов и цвета */
   
     function renderRailIcons() {
@@ -85,6 +111,7 @@
       renderToolGrid();
       applyColorInputs();
       syncPaletteInputs();
+      syncPopoverSliders();
     }
   
     el.toolGrid.addEventListener('click', function (event) {

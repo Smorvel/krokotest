@@ -20,43 +20,92 @@
       syncDone = true;
     }
 
-    /* На узком экране холст остаётся целиком видимым: прокрутка компенсируется
-       сдвигом вниз, а квадрат пропорционально уменьшается к верхнему краю.
-       Так пользователь видит весь рисунок, пока не ушёл вниз к сообщениям. */
+    /* На узком экране квадрат уменьшается на месте. Никакого translateY:
+       трансформация не меняет поток документа, поэтому сдвинутый холст
+       перекрывал бы палитру и чат при прокрутке. */
     var compactQuery = window.matchMedia ? window.matchMedia('(max-width: 820px)') : null;
     function compactCanvasScale() {
       if (!el.wrap) return 1;
       el.wrap.style.transform = '';
       if (!compactQuery || !compactQuery.matches) return 1;
-      var rect = el.wrap.getBoundingClientRect();
-      var start = Math.max(0, Math.round(rect.top + window.scrollY - 8));
       var maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-      var span = Math.max(180, maxScroll - start);
-      var passed = Math.max(0, Math.min(span, window.scrollY - start));
-      /* Сначала холст «приклеен» к верху и уменьшается, оставаясь целиком
-         видимым. Ближе к самому низу прокрутка отпускает его. */
-      var hold = Math.max(120, span * 0.72);
-      var pin = Math.min(passed, hold);
-      var release = Math.max(0, passed - hold);
-      var shift = pin - release * 1.2;
-      var scale = 1 - 0.42 * Math.min(1, passed / hold);
-      el.wrap.style.transform = 'translateY(' + Math.round(shift) + 'px) scale(' + scale.toFixed(3) + ')';
+      var progress = maxScroll > 0 ? Math.min(1, window.scrollY / maxScroll) : 0;
+      var scale = 1 - 0.18 * progress;
+      el.wrap.style.transform = 'scale(' + scale.toFixed(3) + ')';
       return scale;
     }
 
-    /* Панель кистей стоит сбоку от текущего положения холста. Скроллбара у неё
-       нет никогда: при нехватке высоты кнопки сами раскладываются в 2 ряда. */
+    function layoutBox(node) {
+      var left = 0;
+      var top = 0;
+      for (var current = node; current; current = current.offsetParent) {
+        left += current.offsetLeft || 0;
+        top += current.offsetTop || 0;
+      }
+      return {
+        left: left - (window.scrollX || 0),
+        top: top - (window.scrollY || 0),
+        width: node.offsetWidth,
+        height: node.offsetHeight
+      };
+    }
+
+    /* Ширина панели фиксированная — 118px. Если кнопки не помещаются по
+       высоте, они раскладываются ровно во второй столбец. Скроллбара и
+       обрезанных кнопок нет. За высоту берём собственную высоту содержимого,
+       а не высоту квадрата холста. */
+    function railItems() {
+      if (!el.toolRail) return [];
+      return [].slice.call(el.toolRail.children).reduce(function (all, node) {
+        if (node === el.toolGrid && getComputedStyle(node).display === 'contents') {
+          return all.concat([].slice.call(node.children));
+        }
+        all.push(node);
+        return all;
+      }, []);
+    }
+
     function alignToolRail() {
       if (!el.toolRail || !el.wrap) return;
       compactCanvasScale();
-      var rect = el.wrap.getBoundingClientRect();
+      var box = layoutBox(el.wrap);
       var railWidth = el.toolRail.offsetWidth || 118;
-      var limit = Math.max(120, window.innerHeight - 16);
-      var height = Math.min(limit, Math.max(Math.min(260, limit), Math.round(rect.height)));
-      el.toolRail.style.left = Math.max(4, Math.round(rect.left - railWidth - 8)) + 'px';
-      el.toolRail.style.top = Math.round(rect.top) + 'px';
+      var available = Math.max(120, window.innerHeight - 16);
+      var items = railItems();
+      var railStyle = getComputedStyle(el.toolRail);
+      var rowGap = parseFloat(railStyle.rowGap) || 6;
+      var chrome = (parseFloat(railStyle.paddingTop) || 0) +
+        (parseFloat(railStyle.paddingBottom) || 0) +
+        (parseFloat(railStyle.borderTopWidth) || 0) +
+        (parseFloat(railStyle.borderBottomWidth) || 0);
+      if (!items.length) return;
+
+      function stackHeight(rows) {
+        var height = chrome + rowGap * Math.max(0, rows - 1);
+        for (var row = 0; row < rows; row += 1) {
+          var tallest = items[row].offsetHeight || 0;
+          var other = items[row + rows];
+          if (other) tallest = Math.max(tallest, other.offsetHeight || 0);
+          height += tallest;
+        }
+        return height;
+      }
+
+      var cols = 1;
+      var rows = items.length;
+      var height = stackHeight(rows);
+      if (height > available && items.length > 1) {
+        cols = 2;
+        rows = Math.ceil(items.length / 2);
+        height = stackHeight(rows);
+      }
+      el.toolRail.style.setProperty('--rail-cols', cols);
+      el.toolRail.style.setProperty('--rail-rows', rows);
+      height = Math.max(120, Math.round(height));
+      el.toolRail.style.left = Math.max(4, Math.round(box.left - railWidth - 8)) + 'px';
+      el.toolRail.style.top = Math.round(height > available ? 8 : box.top) + 'px';
       el.toolRail.style.height = height + 'px';
-      el.toolRail.style.maxHeight = height + 'px';
+      el.toolRail.style.maxHeight = 'none';
     }
 
     G.showConnectionOverlay = showConnectionOverlay;

@@ -46,7 +46,9 @@
         var single = result.targets.length === 1;
         var reason = profile.name + (single ? ' угадал! +10 очков.' : ' угадал все слова! +10 очков.');
         systemMessage(reason);
-        state.pausedUntil = Date.now() + HIT_PAUSE_MS;
+        /* Фиксируем остаток времени до показа слова, чтобы пауза не съедала
+           секунды раунда и была одинаковой у всех игроков. */
+        pauseRoundTimer();
         state.hitInfo = {
           id: K.uid(),
           guesserId: myId,
@@ -70,14 +72,24 @@
   
     el.messages.addEventListener('click', function (event) {
       var btn = event.target.closest('[data-react]');
-      if (!btn || !isDrawer() || isBannedMe() || !state) return;
+      if (!btn || !state || isBannedMe() || !(isDrawer() || isCreator())) return;
       var id = btn.dataset.msg;
       var message = state.messages.filter(function (m) { return m.id === id; })[0];
       if (!message || isOldMessage(message)) return;
       var value = btn.dataset.react === 'like' ? 'like' : 'dislike';
-      state.reactions[id] = { value: reactionValue(id) === value ? '' : value };
+      var old = state.reactions[id] || {};
+      var next = reactionValue(id) === value ? '' : value;
+      state.reactions[id] = {
+        value: next,
+        lastValue: next || old.value || old.lastValue || value,
+        by: next ? myId : '',
+        at: Date.now()
+      };
       publishState();
-      renderMessages();
+      /* Сохраняем позицию чата: снятие лайка не должно дёргать сам скролл,
+         в том числе когда вернётся наше же состояние из MQTT. */
+      G.keepMessagesScrollUntil = Date.now() + 1200;
+      renderMessages(true);
     });
   
     el.players.addEventListener('click', function (event) {
@@ -141,7 +153,7 @@
       if (!isFinite(minutes)) minutes = 5;
       minutes = Math.max(0, Math.min(60, minutes));
       state.roundMs = Math.round(minutes * 60000);
-      state.startedAt = Date.now();
+      resetRoundTimer();
       state.waitingForPlayers = false;
       state.expiredAt = 0;
       state.hintSent = false;

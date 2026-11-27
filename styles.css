@@ -18,37 +18,45 @@
 [hidden] { display: none !important; }
 html { scroll-behavior: smooth; }
 
-/* Скроллбары появляются только во время прокрутки или когда курсор у самой
-   полосы. Кнопки вверх/вниз убраны, полоса стала шире и мягче. */
-html, body, * {
-  scrollbar-color: transparent transparent;
-  scrollbar-width: thin;
+/* Скроллбары скрыты до прокрутки страницы или наведения на блок. Кнопки
+   вверх/вниз убраны, полоса шире и мягче. WebKit-псевдоэлементы не конфли-
+   куют со стандартными свойствами, поэтому цвет не «мигает» при лайке. */
+::-webkit-scrollbar { width: 16px; height: 16px; }
+::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 999px;
+  margin: 4px;
 }
-::-webkit-scrollbar { width: 14px; height: 14px; }
-::-webkit-scrollbar-track { background: transparent; border-radius: 12px; }
 ::-webkit-scrollbar-thumb {
-  border: 3px solid transparent;
-  border-radius: 12px;
+  border: 4px solid transparent;
+  border-radius: 999px;
   background: transparent;
   background-clip: padding-box;
-  transition: background-color .18s ease, box-shadow .18s ease;
+  box-shadow: none;
 }
 ::-webkit-scrollbar-button { width: 0; height: 0; display: none; }
 ::-webkit-scrollbar-corner { background: transparent; }
-html.show-scrollbars, html.show-scrollbars *, .scroll-hover {
-  scrollbar-color: #34d399 transparent;
+html.show-scrollbars ::-webkit-scrollbar-track,
+.scroll-hover::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, .04);
 }
 html.show-scrollbars ::-webkit-scrollbar-thumb,
 .scroll-hover::-webkit-scrollbar-thumb {
-  border-color: rgba(8, 10, 12, .9);
+  border-color: rgba(8, 10, 12, .85);
   background: linear-gradient(180deg, #34d399, #38bdf8);
   background-clip: padding-box;
-  box-shadow: 0 0 14px rgba(52, 211, 153, .35);
+  box-shadow: 0 0 14px rgba(52, 211, 153, .35), inset 0 0 0 1px rgba(255, 255, 255, .12);
 }
 html.show-scrollbars ::-webkit-scrollbar-thumb:hover,
 .scroll-hover::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(180deg, #5eead4, #7dd3fc);
-  box-shadow: 0 0 18px rgba(94, 234, 212, .5);
+  box-shadow: 0 0 18px rgba(94, 234, 212, .5), inset 0 0 0 1px rgba(255, 255, 255, .18);
+}
+@supports (-moz-appearance: none) {
+  html, body, * { scrollbar-color: transparent transparent; scrollbar-width: auto; }
+  html.show-scrollbars, html.show-scrollbars *, .scroll-hover {
+    scrollbar-color: #34d399 rgba(255, 255, 255, .04);
+  }
 }
 
 body {
@@ -205,20 +213,24 @@ textarea { resize: vertical; }
   top: 0;
   left: 0;
   z-index: 40;
-  display: flex;
-  flex-flow: column wrap;
-  align-content: flex-start;
-  align-items: center;
+  display: grid;
+  grid-template-columns: repeat(var(--rail-cols, 1), 34px);
+  grid-template-rows: repeat(var(--rail-rows, 9), auto);
+  grid-auto-flow: column;
+  align-content: start;
+  justify-content: center;
   gap: 6px 8px;
   width: 118px;
   max-height: none;
-  padding: 8px;
+  /* Горизонтальные поля подобраны так, чтобы в 118 px помещалось ровно два
+     столбца по 34 px и третий столбец физически не влезал. */
+  padding: 8px 16px;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
 }
-.rail-control { display: grid; justify-items: center; gap: 2px; width: 100%; flex: none; }
+.rail-control { display: grid; justify-items: center; gap: 2px; width: 34px; flex: none; }
 .rail-caption {
   color: var(--muted);
   font-size: 9px;
@@ -247,7 +259,7 @@ textarea { resize: vertical; }
 .tool-btn svg { width: 18px; height: 18px; }
 .tool-btn:hover { border-color: var(--sky); }
 .tool-btn.active { border-color: var(--green); background: rgba(52, 211, 153, .16); color: var(--green); }
-.rail-sep { flex: none; width: 40px; height: 1px; background: var(--line); }
+.rail-sep { flex: none; width: 34px; height: 1px; background: var(--line); }
 .palette { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
 .swatch { height: 20px; padding: 0; border: 1px solid var(--line); border-radius: 5px; }
 .swatch.active { border-color: var(--green); box-shadow: 0 0 0 1px var(--green); }
@@ -286,21 +298,6 @@ textarea { resize: vertical; }
 .round-info b { color: var(--text); }
 .timer { padding: 4px 8px; border-radius: 6px; background: var(--surface-2); color: var(--green); font-size: 13px; font-weight: 900; }
 
-.canvas-wrap {
-  position: relative;
-  width: min(100%, calc(100vh - 210px));
-  min-width: 400px;
-  max-width: 760px;
-  aspect-ratio: 1 / 1;
-  margin: 0 auto;
-  transform-origin: 50% 0;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #252932;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, .45);
-}
-#drawCanvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .brush-cursor {
   position: absolute;
   z-index: 5;
@@ -340,6 +337,20 @@ textarea { resize: vertical; }
   box-shadow: 0 10px 28px rgba(0, 0, 0, .5);
   transform: translateX(-50%);
   animation: hit-pop 2.4s ease forwards;
+}
+.size-toast {
+  position: absolute;
+  z-index: 10;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(9, 12, 20, .94);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, -100%);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .55);
 }
 .word-reveal {
   position: absolute;
@@ -500,7 +511,7 @@ textarea { resize: vertical; }
   .own-room-row { flex-wrap: wrap; }
   .game-shell { grid-template-columns: 118px minmax(400px, 1fr); padding: 8px; gap: 8px; }
   .stage { grid-column: 2; }
-  .tool-rail { padding: 6px; }
+  .tool-rail { padding: 6px 16px; }
   .side-panel { grid-column: 1 / -1; height: auto; max-height: none; }
   .tab-panel { min-height: 0; }
   /* Как на croch.ru: на узком экране чат под холстом, поле ввода и свежие
@@ -702,6 +713,44 @@ textarea { resize: vertical; }
 }
 .palette-hex-label { display: grid; grid-template-columns: 34px 1fr; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; font-weight: 700; }
 .popover-hex-input { width: 100%; padding: 6px 8px; font-size: 12px; }
+.popover-sliders { display: grid; gap: 8px; margin: 10px 0; }
+.popover-slider {
+  display: grid;
+  grid-template-columns: 72px 1fr 38px;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+.popover-slider output { color: var(--text); text-align: right; }
+.popover-slider input[type="range"] {
+  width: 100%;
+  height: 10px;
+  margin: 0;
+  border-radius: 5px;
+  background: linear-gradient(to right, var(--green), var(--sky));
+  appearance: none;
+  cursor: pointer;
+}
+.popover-slider input[type="range"]::-webkit-slider-thumb {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: transparent;
+  appearance: none;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .7);
+}
+.popover-slider input[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .7);
+}
+.palette-popover.bg-mode .popover-sliders { display: none; }
 .palette-sv {
   --palette-hue: 210;
   position: relative;
@@ -820,6 +869,8 @@ textarea { resize: vertical; }
 .react-mark svg { display: block; width: 14px; height: 14px; fill: currentColor; }
 .react-mark.like { color: var(--green); }
 .react-mark.dislike { color: #ef4444; }
+/* Снятая создателем реакция остаётся видимой, но уже не выделяется цветом. */
+.react-mark.muted.like, .react-mark.muted.dislike { color: #9ca3af; }
 
 .dict-check-list { display: grid; gap: 5px; max-height: 190px; overflow-y: auto; padding-right: 3px; }
 .dict-check {

@@ -42,8 +42,10 @@
     function reactionMarkup(message) {
       if (message.system) return '';
       var value = reactionValue(message.id);
-      if (!isDrawer() || isBannedMe() || isOldMessage(message)) {
-        return value ? reactionIcon(value) : '';
+      var canReact = (isDrawer() || isCreator()) && !isBannedMe() && !isOldMessage(message);
+      if (!canReact) {
+        var info = reactionInfo(message.id);
+        return info.value ? reactionIcon(info.value, info.muted) : '';
       }
       return '<span class="reaction-slot">' +
         '<button class="react-btn' + (value === 'like' ? ' active' : '') + '" type="button" data-react="like" data-msg="' + K.escapeHtml(message.id) + '" aria-label="Лайк">' + (ICONS.like || '') + '</button>' +
@@ -51,8 +53,12 @@
         '</span>';
     }
   
-    function renderMessages() {
+    function renderMessages(keepScroll) {
       if (!state) return;
+      /* Реакция перерисовывает чат, но позиция скролла должна оставаться там же,
+         включая быстрый MQTT-echo собственного состояния. */
+      keepScroll = !!keepScroll || (Number(G.keepMessagesScrollUntil) || 0) > Date.now();
+      var previousTop = el.messages.scrollTop;
       var bannedIds = state.bans || [];
       el.messages.innerHTML = state.messages.filter(function (m) {
         return !(m.ownerId && bannedIds.indexOf(m.ownerId) >= 0);
@@ -68,7 +74,8 @@
          уходят вверх. В узкой раскладке направление скролла может быть
          обратным, поэтому выбираем позицию по фактическому flex-direction. */
       var reverse = getComputedStyle(el.messages).flexDirection === 'column-reverse';
-      el.messages.scrollTop = reverse ? 0 : el.messages.scrollHeight;
+      if (keepScroll) el.messages.scrollTop = previousTop;
+      else el.messages.scrollTop = reverse ? 0 : el.messages.scrollHeight;
     }
   
     function renderWord() {
@@ -213,13 +220,12 @@
 
     function renderTimer() {
       if (!state) return;
-      var pausedNow = isHitPaused();
+      var pausedNow = isHitPaused() || !!state.reveal;
       if (wasHitPaused && !pausedNow) renderTools();
       wasHitPaused = pausedNow;
-      if (pausedNow) { el.timer.textContent = 'пауза'; return; }
       if (!state.roundMs) { el.timer.textContent = '∞'; return; }
-      if (state.waitingForPlayers) { el.timer.textContent = '0:00 · ждём'; return; }
-      var left = Math.max(0, Math.ceil((state.roundMs - (Date.now() - state.startedAt)) / 1000));
+      if (state.waitingForPlayers && !state.reveal) { el.timer.textContent = '0:00 · ждём'; return; }
+      var left = Math.ceil(remainingRoundMs() / 1000);
       el.timer.textContent = String(Math.floor(left / 60)).padStart(2, '0') + ':' + String(left % 60).padStart(2, '0');
     }
   

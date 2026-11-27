@@ -127,11 +127,12 @@
     function openPalettePopover(anchor, mode) {
       if (sessionKicked || !anchor || !el.palettePopover) return;
       paletteMode = mode === 'bg' ? 'bg' : 'ink';
+      el.palettePopover.classList.toggle('bg-mode', paletteMode === 'bg');
       syncPaletteInputs();
       el.palettePopover.hidden = false;
       var rect = anchor.getBoundingClientRect();
-      var popoverWidth = 240;
-      var popoverHeight = 300;
+      var popoverWidth = el.palettePopover.offsetWidth || 240;
+      var popoverHeight = el.palettePopover.offsetHeight || 300;
       el.palettePopover.style.left = clamp(rect.right + 10, 8, Math.max(8, window.innerWidth - popoverWidth - 8)) + 'px';
       el.palettePopover.style.top = clamp(rect.top, 8, Math.max(8, window.innerHeight - popoverHeight - 8)) + 'px';
     }
