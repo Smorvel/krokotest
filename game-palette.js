@@ -97,6 +97,7 @@
       applyColorInputs();
       if (state && isDrawer()) {
         state.bg = value;
+        state.bgBy = myId;
         if (!quiet) publishState();
       }
       scheduleBaseRedraw();

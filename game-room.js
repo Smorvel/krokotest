@@ -39,7 +39,8 @@
         word: String(raw.word || ''),
         round: Number(raw.round) || 0,
         until: Number(raw.until) || 0,
-        reason: String(raw.reason || '')
+        reason: String(raw.reason || ''),
+        guesserId: String(raw.guesserId || '')
       };
       if (!value.id || !value.word || !value.until) return null;
       if (!value.until || value.until <= Date.now()) return null;
@@ -126,6 +127,7 @@
       s.guessedWords = Array.isArray(s.guessedWords) ? s.guessedWords : [];
       s.dictionary = { id: dictionary.id, name: dictionary.name, words: dictionary.words.slice(0, K.MAX_DICTIONARY_WORDS) };
       s.bg = typeof s.bg === 'string' ? s.bg : (tool.bg || '#252932');
+      s.bgBy = typeof s.bgBy === 'string' ? s.bgBy : '';
       s.drawer = typeof s.drawer === 'string' ? s.drawer : '';
       s.pausedUntil = Number(s.pausedUntil) || 0;
       s.hitInfo = s.hitInfo && typeof s.hitInfo === 'object' ? s.hitInfo : null;
@@ -138,7 +140,86 @@
       s.updatedBy = s.updatedBy || '';
       return s;
     }
-  
+
+    /* Состояние от другого игрока может быть основано на устаревшей копии.
+       Сливаем события, чтобы сообщения и раскрытие слова не исчезали. */
+    function mergeState(incoming, previous) {
+      var changed = false;
+      if (!previous) return { state: incoming, changed: false };
+      var sameRound = Number(incoming.round) === Number(previous.round) &&
+        Number(incoming.wordIndex) === Number(previous.wordIndex);
+
+      var byId = {};
+      var messages = [];
+      (incoming.messages || []).slice().sort(function (a, b) { return (Number(b.at) || 0) - (Number(a.at) || 0); })
+        .concat((previous.messages || []).slice().sort(function (a, b) { return (Number(b.at) || 0) - (Number(a.at) || 0); }))
+        .forEach(function (message) {
+          if (!message || !message.id || byId[message.id]) return;
+          byId[message.id] = true;
+          messages.push(message);
+        });
+      messages.sort(function (a, b) { return (Number(a.at) || 0) - (Number(b.at) || 0); });
+      var oldMessageIds = (incoming.messages || []).map(function (m) { return m.id; }).sort().join(',');
+      incoming.messages = messages.slice(-50);
+      if (oldMessageIds !== incoming.messages.map(function (m) { return m.id; }).sort().join(',')) changed = true;
+
+      var reactions = incoming.reactions || {};
+      Object.keys(previous.reactions || {}).forEach(function (id) {
+        var old = previous.reactions[id];
+        var current = reactions[id];
+        if (old && old.value && (!current || !current.value)) {
+          reactions[id] = old;
+          changed = true;
+        }
+      });
+      incoming.reactions = reactions;
+
+      var scores = incoming.scores || {};
+      Object.keys(previous.scores || {}).forEach(function (name) {
+        if ((Number(previous.scores[name]) || 0) > (Number(scores[name]) || 0)) {
+          scores[name] = previous.scores[name];
+          changed = true;
+        }
+      });
+      incoming.scores = scores;
+
+      /* Фон задаёт текущий художник: чужие устаревшие копии его не перебивают. */
+      if (sameRound && previous.bgBy && incoming.drawer === previous.bgBy &&
+          incoming.updatedBy !== previous.bgBy && incoming.bgBy !== previous.bgBy &&
+          incoming.bg !== previous.bg) {
+        incoming.bg = previous.bg;
+        incoming.bgBy = previous.bgBy;
+        changed = true;
+      }
+
+      if (sameRound) {
+        var guesses = (incoming.guessedWords || []).slice();
+        (previous.guessedWords || []).forEach(function (key) {
+          if (guesses.indexOf(key) < 0) { guesses.push(key); changed = true; }
+        });
+        incoming.guessedWords = guesses;
+
+        if (previous.reveal && Number(previous.reveal.until) > Date.now() && !incoming.reveal) {
+          incoming.reveal = previous.reveal;
+          incoming.hitInfo = null;
+          changed = true;
+        }
+        if (!incoming.reveal && previous.hitInfo && !incoming.hitInfo &&
+            Number(previous.hitInfo.at) > Number(incoming.hitInfo && incoming.hitInfo.at)) {
+          incoming.hitInfo = previous.hitInfo;
+          changed = true;
+        }
+        if (!incoming.reveal) {
+          var paused = Math.max(Number(incoming.pausedUntil) || 0, Number(previous.pausedUntil) || 0);
+          if (paused !== (Number(incoming.pausedUntil) || 0)) {
+            incoming.pausedUntil = paused;
+            changed = true;
+          }
+        }
+      }
+      return { state: incoming, changed: changed };
+    }
+
     function presentPlayers() {
       var now = Date.now();
       var list = Object.keys(presence).map(function (id) { return presence[id]; }).filter(function (p) {
@@ -203,19 +284,26 @@
       state.messages = state.messages.slice(-50);
     }
   
-    function rotateDrawer(reason) {
+    function rotateDrawer(reason, nextDrawerId) {
       if (!state) return;
       var players = presentPlayers();
       var ids = state.queue.filter(function (id) {
         return players.some(function (p) { return p.id === id; }) && !isIdBanned(id) && !isFingerprintBanned(presence[id] && presence[id].fingerprint);
       });
-      var index = ids.indexOf(state.drawer);
-      if (index >= 0) {
+      var pool = ids.filter(function (id) { return id !== state.drawer; });
+      if (!pool.length) pool = ids;
+      var nextId = nextDrawerId && ids.indexOf(nextDrawerId) >= 0
+        ? nextDrawerId
+        : (pool.length ? pool[Math.floor(Math.random() * pool.length)] : myId);
+      var index = ids.indexOf(nextId);
+      if (index > 0) {
         ids.splice(index, 1);
-        ids.push(state.drawer);
+        ids.unshift(nextId);
+      } else if (index < 0) {
+        ids.unshift(nextId);
       }
       state.queue = ids;
-      state.drawer = ids[0] || myId;
+      state.drawer = nextId;
       var endingAt = state.startedAt;
       chooseNextWord();
       state.round += 1;
@@ -300,7 +388,8 @@
         word: currentWord,
         round: state.round,
         until: Date.now() + REVEAL_MS,
-        reason: reason || 'Раунд завершён'
+        reason: reason || 'Раунд завершён',
+        guesserId: String((state.hitInfo && state.hitInfo.guesserId) || '')
       };
       state.reveal = reveal;
       state.hitInfo = null;
@@ -319,7 +408,7 @@
     function finishReveal(reveal) {
       if (!state || !state.reveal || state.reveal.id !== reveal.id) return;
       if (!isRevealAuthority()) return;
-      rotateDrawer(reveal.reason || 'Раунд завершён.');
+      rotateDrawer(reveal.reason || 'Раунд завершён.', reveal.guesserId);
       publishState();
       renderAll();
     }
@@ -402,6 +491,7 @@
     G.isBannedMe = isBannedMe;
     G.isHitPaused = isHitPaused;
     G.normalizeState = normalizeState;
+    G.mergeState = mergeState;
     G.presentPlayers = presentPlayers;
     G.isDrawer = isDrawer;
     G.publishState = publishState;

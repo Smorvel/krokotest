@@ -91,7 +91,8 @@
         stateSeen = true;
         if (state && Number(data.updatedAt) < Number(state.updatedAt || 0)) return;
         var previousRound = state ? state.round + ':' + state.wordIndex : null;
-        state = normalizeState(data);
+        var merged = mergeState(normalizeState(data), state);
+        state = merged.state;
         Object.keys(remoteDrafts).forEach(function (id) {
           var draft = remoteDrafts[id];
           if (!draft) return;
@@ -113,6 +114,7 @@
         renderAll();
         if (state.reveal) scheduleRevealResolution(state.reveal);
         if (state.hitInfo) scheduleHitResolution(state.hitInfo);
+        if (merged.changed) publishState();
         ensureDrawer();
         checkTimeout();
         return;
@@ -169,6 +171,7 @@
         messages: [],
         scores: {},
         bg: tool.bg || '#252932',
+        bgBy: myId,
         hintSent: false,
         hintsDisabled: false,
         waitingForPlayers: false,

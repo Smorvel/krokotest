@@ -3,8 +3,12 @@
   with (G) {
     /* ---------- Холст ---------- */
   
+    function drawingBlocked() {
+      return !!state && (isHitPaused() || !!state.reveal || !!state.lastWord);
+    }
+
     canvas.addEventListener('pointerdown', function (event) {
-      if (!state || !isDrawer()) return;
+      if (!state || !isDrawer() || drawingBlocked()) return;
       event.preventDefault();
       updateCursor(event);
   
@@ -61,6 +65,7 @@
     canvas.addEventListener('pointermove', function (event) {
       updateCursor(event);
       if (!drawing || !localDraft) return;
+      if (drawingBlocked()) { endStroke(event, true); return; }
       event.preventDefault();
       var raw = pointFromEvent(event);
       var next = tool.smooth && !isShape(tool.current) ? smoothInputPoint(raw, false) : raw;
@@ -78,11 +83,12 @@
       }
     });
   
-    function endStroke(event) {
+    function endStroke(event, discard) {
       if (!drawing) return;
       drawing = false;
+      var skip = discard || drawingBlocked();
       if (localDraft) {
-        if (event && event.type === 'pointerup') {
+        if (!skip && event && event.type === 'pointerup') {
           var rawEnd = pointFromEvent(event);
           var endPoint = localDraft.smooth && !isShape(localDraft.tool)
             ? smoothInputPoint(rawEnd, true) : rawEnd;
@@ -94,7 +100,7 @@
           }
         }
         smoothPoint = null;
-        commitStroke(localDraft);
+        if (!skip) commitStroke(localDraft);
         localDraft = null;
         publishDraft(null);
         scheduleDrafts();

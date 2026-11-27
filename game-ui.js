@@ -47,6 +47,7 @@
         state.pausedUntil = Date.now() + HIT_PAUSE_MS;
         state.hitInfo = {
           id: K.uid(),
+          guesserId: myId,
           text: single ? '🎯 ' + profile.name + ' угадал! +10 очков' : '🎯 Все слова угаданы! +10 очков',
           reason: reason,
           at: Date.now()
