@@ -52,6 +52,7 @@
   G.initialStateTimer = null;
   G.presence = {};
   G.remoteDrafts = {};
+  G.pendingStrokes = {};
   G.localDraft = null;
   G.drawing = false;
   G.lastDraftPublish = 0;
