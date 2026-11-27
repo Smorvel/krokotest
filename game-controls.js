@@ -123,14 +123,19 @@
       refreshCursor();
     });
   
-    el.undo.addEventListener('click', function () {
-      if (!state || !isDrawer()) return;
+    function undoStroke() {
+      if (!state || !isDrawer() || isHitPaused() || state.reveal || state.lastWord) return;
       for (var i = state.strokes.length - 1; i >= 0; i--) {
-        if (state.strokes[i].owner === myId) { state.strokes.splice(i, 1); break; }
+        if (state.strokes[i].owner === myId) {
+          state.strokes.splice(i, 1);
+          publishState();
+          scheduleBaseRedraw();
+          return;
+        }
       }
-      publishState();
-      scheduleBaseRedraw();
-    });
+    }
+
+    el.undo.addEventListener('click', undoStroke);
   
     el.clear.addEventListener('click', function () {
       if (!state || !isDrawer()) return;
@@ -148,12 +153,13 @@
     document.addEventListener('keydown', function (event) {
       if (sessionKicked) return;
       var key = String(event.key || '').toLowerCase();
-      if ((event.ctrlKey || event.metaKey) && key === 'z') {
+      var command = event.ctrlKey || event.metaKey;
+      if (command && (key === 'z' || event.code === 'KeyZ')) {
         event.preventDefault();
-        el.undo.click();
-      } else if ((event.ctrlKey || event.metaKey) && key === 's') {
+        undoStroke();
+      } else if (command && (key === 's' || event.code === 'KeyS')) {
         event.preventDefault();
-        saveCanvasPng();
+        if (el.save && !el.save.hidden) saveCanvasPng();
       }
     });
     G.renderKnobs = renderKnobs;
@@ -161,5 +167,6 @@
     G.beginKnobDrag = beginKnobDrag;
     G.renderToolsOnce = renderToolsOnce;
     G.renderRailIcons = renderRailIcons;
+    G.undoStroke = undoStroke;
   }
 })(window.KROKO_GAME);

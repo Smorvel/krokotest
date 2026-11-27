@@ -388,10 +388,26 @@
     function ensureDrawer() {
       if (!state) return;
       if (presenceReadyAt && Date.now() < presenceReadyAt) return;
-      if (state.reveal || state.lastWord) return;
       var players = presentPlayers();
       var ids = players.map(function (p) { return p.id; });
-      if (ids.indexOf(state.drawer) >= 0) return;
+      var drawerPresent = ids.indexOf(state.drawer) >= 0;
+
+      /* В одиночку любая унаследованная от предыдущей сессии пауза — это новый раунд. */
+      if (players.length <= 1) {
+        var stale = !drawerPresent || state.reveal || state.lastWord || state.hitInfo || state.waitingForPlayers;
+        if (!stale) return;
+        state.queue = ids;
+        state.lastWord = null;
+        state.reveal = null;
+        state.hitInfo = null;
+        rotateDrawer('Новый раунд');
+        publishState();
+        renderAll();
+        return;
+      }
+
+      if (state.reveal || state.lastWord) return;
+      if (drawerPresent) return;
       state.queue = ids;
       beginReveal('Художник вышел.');
     }

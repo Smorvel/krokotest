@@ -28,8 +28,8 @@
   G.syncDone = false;
 
   G.PRESET_COLORS = [
-    '#111827', '#ffffff', '#252932', '#ef4444', '#f97316', '#fbbf24',
-    '#a3e635', '#34d399', '#22d3ee', '#38bdf8', '#6366f1', '#a78bfa'
+    '#000000', '#ffffff', '#606060', '#d32f2f', '#f97316', '#fbbf24',
+    '#37c206', '#ffe7b9', '#22d3ee', '#2154ee', '#8147e4', '#fa28b9'
   ];
 
   G.SHAPE_LABELS = { square: 'квадрат', circle: 'круг', stripe: 'полоса' };

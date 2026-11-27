@@ -178,7 +178,9 @@
   
     function renderReveal() {
       var reveal = state && (state.reveal || state.lastWord);
-      if (!el.wordReveal || !reveal || Number(reveal.until) <= Date.now()) {
+      var active = !!reveal && Number(reveal.until) > Date.now();
+      if (el.save) el.save.hidden = !active;
+      if (!el.wordReveal || !active) {
         if (el.wordReveal) el.wordReveal.hidden = true;
         return;
       }

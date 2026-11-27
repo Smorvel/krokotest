@@ -403,6 +403,15 @@ textarea { resize: vertical; }
 .message b { color: var(--green); }
 .message.system { border: 1px dashed var(--line); background: transparent; color: var(--muted); }
 .message.hit { border: 1px solid var(--green); background: rgba(52, 211, 153, .1); }
+.save-round {
+  justify-self: center;
+  width: 100%;
+  margin-top: 8px;
+  border-color: rgba(52, 211, 153, .55);
+  background: rgba(52, 211, 153, .14);
+  color: var(--green);
+}
+.save-round:hover { border-color: var(--green); background: rgba(52, 211, 153, .24); }
 .chat-form { display: flex; gap: 6px; margin-top: 8px; }
 .chat-form input { min-width: 0; }
 .chat-form .button { flex: 0 0 auto; }
@@ -600,21 +609,10 @@ textarea { resize: vertical; }
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface-2);
+  color: var(--text);
   font-size: 16px;
 }
 .dock-tool:hover { border-color: var(--sky); }
-.dock-save {
-  flex: 0 0 auto;
-  height: 36px;
-  padding: 0 14px;
-  border: 1px solid rgba(52, 211, 153, .55);
-  border-radius: 8px;
-  background: rgba(52, 211, 153, .14);
-  color: var(--green);
-  font-size: 12px;
-  font-weight: 900;
-}
-.dock-save:hover { border-color: var(--green); background: rgba(52, 211, 153, .24); }
 .dock-actions { display: flex; align-items: center; gap: 8px; }
 .dock-tool svg { display: block; width: 18px; height: 18px; }
 .dock-tool.danger:hover { border-color: var(--danger); color: var(--danger); }

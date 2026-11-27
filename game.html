@@ -65,7 +65,6 @@
         <div class="dock-actions">
           <button class="dock-tool" id="undoBtn" type="button" aria-label="Отменить" title="Отменить штрих (Ctrl+Z)"></button>
           <button class="dock-tool danger" id="clearBtn" type="button" aria-label="Очистить" title="Очистить холст"></button>
-          <button class="dock-save" id="saveBtn" type="button" title="Сохранить рисунок в PNG">Сохранить</button>
         </div>
       </div>
 
@@ -104,6 +103,7 @@
 
       <section class="card tab-panel chat-panel" data-panel="chat">
         <div class="messages" id="messages" aria-live="polite"></div>
+        <button class="button small save-round" id="saveBtn" type="button" title="Скачать рисунок в PNG" hidden>Сохранить</button>
         <form class="chat-form" id="chatForm">
           <input id="chatInput" maxlength="140" placeholder="Напиши слово..." autocomplete="off">
           <button class="button primary small" type="submit">➤</button>
