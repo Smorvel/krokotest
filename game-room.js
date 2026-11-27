@@ -214,6 +214,17 @@
         if (strokeIds(incoming.strokes).join(',') !== strokeIds(previousStrokes).join(',')) changed = true;
       }
 
+      /* Ход забирает только сам художник (или игрок, когда художник вышел).
+         Чужая задержанная копия состояния не должна менять ведущего. */
+      if (sameRound && previous.drawer && incoming.drawer !== previous.drawer) {
+        var authorized = incoming.updatedBy === previous.drawer;
+        var oldDrawerPresent = presentPlayers().some(function (p) { return p.id === previous.drawer; });
+        if (!authorized && oldDrawerPresent) {
+          incoming.drawer = previous.drawer;
+          changed = true;
+        }
+      }
+
       /* Фон задаёт текущий художник: чужие устаревшие копии его не перебивают. */
       if (sameRound && previous.bgBy && incoming.drawer === previous.bgBy &&
           incoming.updatedBy !== previous.bgBy && incoming.bgBy !== previous.bgBy &&
@@ -274,7 +285,11 @@
       if (sessionKicked || !state || !client || !client.connected) return;
       state.updatedAt = Date.now();
       state.updatedBy = myId;
-      K.publish(client, K.topic(room, 'state'), state, true);
+      /* Общее состояние НИКОГДА не несёт рисунок. Единственный источник
+         холста — canvas/<round> и stroke/<id>. Раньше задержанная копия
+         state от другого игрока могла обнулить штрихи и раунд. */
+      var payload = Object.assign({}, state, { strokes: [], canvasSeq: 0 });
+      K.publish(client, K.topic(room, 'state'), payload, true);
       if (typeof renderSync === 'function') renderSync();
     }
 
@@ -406,7 +421,9 @@
       }
 
       if (!data.stroke || data.stroke.id !== id) return false;
-      if (currentSeq > seq) return false;
+      /* Завышенный seq в устаревшей копии состояния не должен заставлять
+         клиент пропустить штрих. Повторное применение безопасно: штрихи
+         уникальны по id и уже имеющиеся игнорируются ниже. */
       if (state.strokes.some(function (item) { return item.id === id; })) {
         state.canvasSeq = Math.max(currentSeq, seq);
         if (typeof renderSync === 'function') renderSync();
@@ -449,12 +466,14 @@
       if (!state || !data || !Array.isArray(data.strokes)) return false;
       if (data.round && Number(data.round) !== Number(state.round)) return false;
       var seq = Number(data.seq) || 0;
-      if (seq < (Number(state.canvasSeq) || 0)) return false;
+      /* Снимок публикует только ведущий, и он является окончательным
+         источником холста. Не отбрасываем его из-за seq, который мог
+         уехать вверх от отдельных событий штрихов. */
       var strokes = data.strokes.map(function (stroke) {
         return normalizeStroke(Object.assign({}, stroke));
       }).filter(Boolean);
       state.strokes = strokes;
-      state.canvasSeq = seq;
+      state.canvasSeq = Math.max(Number(state.canvasSeq) || 0, seq);
       var ids = {};
       strokes.forEach(function (stroke) { ids[stroke.id] = true; });
       Object.keys(remoteDrafts).forEach(function (owner) {

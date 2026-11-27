@@ -109,18 +109,35 @@
       if (topic.indexOf(K.topic(room, 'canvas/')) === 0) {
         if (!data || !Array.isArray(data.strokes)) return;
         if (isPlayerBanned({ id: data.by })) return;
-        if (state && data.round && Number(data.round) !== Number(state.round)) return;
+        canvasSeen = true;
         if (!state) {
-          pendingCanvas = data;
+          /* Состояние ещё не пришло: запоминаем самый свежий снимок. */
+          if (!pendingCanvas || Number(data.round) > Number(pendingCanvas.round) ||
+              (Number(data.round) === Number(pendingCanvas.round) &&
+               Number(data.seq) > Number(pendingCanvas.seq))) {
+            pendingCanvas = data;
+          }
+          return;
+        }
+        if (data.round && Number(data.round) !== Number(state.round)) {
+          /* Снимок другого раунда не трогает текущий холст и ведущего. */
+          if (Number(data.round) > Number(state.round) &&
+              (!pendingCanvas || Number(data.round) > Number(pendingCanvas.round))) {
+            pendingCanvas = data;
+          }
           return;
         }
         applyCanvasSnapshot(data);
+        renderAll();
         return;
       }
 
       if (topic === K.topic(room, 'state')) {
         if (Number(data.v) < 2) return;
         stateSeen = true;
+        if (state && data.round && Number(data.round) < Number(state.round)) return;
+        if (state && Number(data.round) === Number(state.round) && Number(data.startedAt) &&
+            Number(data.startedAt) < Number(state.startedAt)) return;
         if (state && Number(data.updatedAt) < Number(state.updatedAt || 0)) return;
         var previousRound = state ? state.round + ':' + state.wordIndex : null;
         var merged = mergeState(normalizeState(data), state);
@@ -250,11 +267,25 @@
     function scheduleInitialState() {
       if (initialStateTimer) clearTimeout(initialStateTimer);
       initialStateTimer = setTimeout(function () {
-        if (state || stateSeen) return;
-        if (!client.connected || !subscribedAt || Date.now() - subscribedAt < 4000) {
+        if (state || stateSeen || canvasSeen || pendingCanvas) return;
+        if (!client.connected || !subscribedAt) {
           scheduleInitialState();
           return;
         }
+        /* Комнату создаёт самый ранний из присутствующих. Позже вошедший игрок
+           ждёт дольше и не пересоздаёт чужую комнату: именно преждевременный
+           createInitialState обнулял холст у ведущего. */
+        if (meta && meta.creatorId &&
+            !(meta.creatorId === myId ||
+              (meta.creatorFingerprint && meta.creatorFingerprint === myFingerprint))) return;
+        var players = presentPlayers();
+        var first = !players.length || players[0].id === myId;
+        var waited = Date.now() - subscribedAt;
+        if (waited < (first ? 4000 : 12000)) {
+          scheduleInitialState();
+          return;
+        }
+        if (!first) return;
         createInitialState();
       }, 1000);
     }
@@ -263,5 +294,6 @@
     G.ensureMeta = ensureMeta;
     G.createInitialState = createInitialState;
     G.scheduleInitialState = scheduleInitialState;
+    G.flushPendingCanvas = flushPendingCanvas;
   }
 })(window.KROKO_GAME);
