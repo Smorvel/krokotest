@@ -85,8 +85,12 @@
 
     function flushPendingCanvas() {
       var snapshot = pendingCanvas;
-      pendingCanvas = null;
-      if (snapshot) applyCanvasSnapshot(snapshot);
+      if (!snapshot) return;
+      if (snapshot.round && state && Number(snapshot.round) < Number(state.round)) {
+        pendingCanvas = null;
+        return;
+      }
+      if (applyCanvasSnapshot(snapshot)) pendingCanvas = null;
     }
 
     client.on('message', function (topic, message) {

@@ -411,6 +411,7 @@
 
     function applyCanvasSnapshot(data) {
       if (!state || !data || !Array.isArray(data.strokes)) return false;
+      if (data.by && state.drawer && data.by !== state.drawer) return false;
       if (data.round && Number(data.round) !== Number(state.round)) return false;
       var seq = Number(data.seq) || 0;
       if (seq < (Number(state.canvasSeq) || 0)) return false;

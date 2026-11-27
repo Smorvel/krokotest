@@ -13,6 +13,9 @@
     setInterval(function () {
       if (sessionKicked) return;
       if (client && client.connected) publishPresence(true);
+      /* Художник периодически рассылает полный холст: если отдельное событие
+         штриха потерялось, следующий снимок всё равно восстановит его у всех. */
+      if (state && isDrawer()) publishCanvasSnapshot();
       if (state) ensureDrawer();
       checkTimeout();
       issueHintIfNeeded();
