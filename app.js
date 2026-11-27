@@ -151,19 +151,21 @@
         color: colorFor(navigator.userAgent),
         named: false,
         inkColor: '#111827',
-        bgColor: '#ffffff',
+        bgColor: '#252932',
         brushSize: 18,
         brushAlpha: 100,
         smoothing: false,
         shapeMode: 'square',
         fingerprint: getFingerprint(),
-        recentColors: ['#111827', '#ffffff', '#ef4444', '#38bdf8']
+        recentColors: ['#111827', '#ffffff', '#ef4444', '#38bdf8'],
+        recentBgColors: ['#252932', '#ffffff', '#111827']
       };
       write(KEY_PROFILE, profile);
     }
     if (!Array.isArray(profile.recentColors)) profile.recentColors = ['#111827', '#ffffff', '#ef4444', '#38bdf8'];
+    if (!Array.isArray(profile.recentBgColors)) profile.recentBgColors = ['#252932', '#ffffff', '#111827'];
     if (!profile.inkColor) profile.inkColor = '#111827';
-    if (!profile.bgColor) profile.bgColor = '#ffffff';
+    if (!profile.bgColor) profile.bgColor = '#252932';
     if (!Number(profile.brushSize)) profile.brushSize = 18;
     if (!Number(profile.brushAlpha)) profile.brushAlpha = 100;
     if (typeof profile.smoothing !== 'boolean') profile.smoothing = false;

@@ -43,6 +43,7 @@
     client = K.connect('play-' + room + '-' + myId, willMessage);
   
     client.on('connect', function () {
+      if (sessionKicked) return;
       el.connection.textContent = 'онлайн';
       el.connection.classList.add('online');
       client.subscribe(K.topic(room, 'meta'), { qos: 1 });
@@ -73,6 +74,7 @@
     });
   
     client.on('message', function (topic, message) {
+      if (sessionKicked) return;
       var data = K.parse(message);
       if (!data) return;
       var metaTopic = K.topic(room, 'meta');
@@ -164,7 +166,7 @@
         strokes: [],
         messages: [],
         scores: {},
-        bg: '#ffffff',
+        bg: tool.bg || '#252932',
         hintSent: false,
         hintsDisabled: false,
         waitingForPlayers: false,

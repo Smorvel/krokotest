@@ -18,10 +18,12 @@
   G.MAX_ROUND_MS = 60 * 60 * 1000;
   G.HIT_PAUSE_MS = 2400;
   G.HISTORY_LIMIT = 30;
+  G.sessionKicked = false;
+  G.syncDone = false;
 
   G.PRESET_COLORS = [
-    '#111827', '#ffffff', '#ef4444', '#f97316', '#fbbf24', '#a3e635',
-    '#34d399', '#22d3ee', '#38bdf8', '#6366f1', '#a78bfa', '#f472b6'
+    '#111827', '#ffffff', '#252932', '#ef4444', '#f97316', '#fbbf24',
+    '#a3e635', '#34d399', '#22d3ee', '#38bdf8', '#6366f1', '#a78bfa'
   ];
 
   G.SHAPE_LABELS = { square: 'квадрат', circle: 'круг', stripe: 'полоса' };
@@ -70,7 +72,7 @@
     size: Number(G.profile.brushSize) || 18,
     alpha: Number(G.profile.brushAlpha) || 100,
     color: G.profile.inkColor || '#111827',
-    bg: G.profile.bgColor || '#ffffff',
+    bg: G.profile.bgColor || '#252932',
     smooth: G.profile.smoothing === true,
     shapeMode: G.SHAPE_LABELS[G.profile.shapeMode] ? G.profile.shapeMode : 'square'
   };
@@ -88,7 +90,9 @@
     toolRail: document.getElementById('toolRail'),
     toolGrid: document.getElementById('toolGrid'),
     sizeKnob: document.getElementById('sizeKnob'),
+    sizeCaption: document.getElementById('sizeCaption'),
     alphaKnob: document.getElementById('alphaKnob'),
+    alphaCaption: document.getElementById('alphaCaption'),
     pipetteBtn: document.getElementById('pipetteBtn'),
     smoothBtn: document.getElementById('smoothBtn'),
     undo: document.getElementById('undoBtn'),
@@ -104,20 +108,19 @@
     inkBlobs: document.getElementById('inkBlobs'),
     bgSquare: document.getElementById('bgSquare'),
     colorEditorBtn: document.getElementById('colorEditorBtn'),
-    colorEditor: document.getElementById('colorEditor'),
-    inkColorInputs: document.querySelectorAll('.ink-color-input'),
-    inkHexInputs: document.querySelectorAll('.ink-hex-input'),
-    bgColorInputs: document.querySelectorAll('.bg-color-input'),
-    bgHexInputs: document.querySelectorAll('.bg-hex-input'),
-    editorRecent: document.getElementById('editorRecent'),
     palettePopover: document.getElementById('palettePopover'),
-    popoverColorInput: document.getElementById('popoverColorInput'),
-    popoverSwatch: document.getElementById('popoverSwatch'),
+    paletteTitle: document.getElementById('paletteTitle'),
+    paletteTargets: document.getElementById('paletteTargets'),
+    paletteCurrent: document.getElementById('paletteCurrent'),
+    paletteHex: document.getElementById('paletteHex'),
+    paletteSv: document.getElementById('paletteSv'),
+    paletteSvHandle: document.getElementById('paletteSvHandle'),
+    paletteHue: document.getElementById('paletteHue'),
     paletteGrid: document.getElementById('paletteGrid'),
-    paletteNativeWrap: document.getElementById('paletteNativeWrap'),
-    paletteNativeInput: document.getElementById('paletteNativeInput'),
-    popoverHexInput: document.getElementById('popoverHexInput'),
+    paletteRecent: document.getElementById('paletteRecent'),
     palettePopoverClose: document.getElementById('palettePopoverClose'),
+    loadingOverlay: document.getElementById('loadingOverlay'),
+    duplicateOverlay: document.getElementById('duplicateOverlay'),
     status: document.getElementById('statusText'),
     sync: document.getElementById('syncText'),
     panelTabs: document.getElementById('panelTabs'),

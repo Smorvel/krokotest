@@ -10,7 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
-<body data-page="game">
+<body data-page="game" class="syncing">
   <header class="topbar game-topbar" hidden>
     <a class="brand" href="index.html"><span class="brand-mark">🎨</span><span>Кроко</span></a>
     <div class="room-meta">
@@ -31,16 +31,23 @@
       <div class="tool-grid" id="toolGrid"></div>
 
       <div class="rail-sep"></div>
-      <button class="knob" id="sizeKnob" type="button" aria-label="Размер кисти"></button>
-      <button class="knob alpha-knob" id="alphaKnob" type="button" aria-label="Прозрачность кисти"></button>
+      <div class="rail-control">
+        <button class="knob" id="sizeKnob" type="button" aria-label="Размер кисти"></button>
+        <span class="rail-caption" id="sizeCaption">размер<br>пикселей</span>
+      </div>
+      <div class="rail-control">
+        <button class="knob alpha-knob" id="alphaKnob" type="button" aria-label="Прозрачность кисти"></button>
+        <span class="rail-caption" id="alphaCaption">прозрачность<br>пикселей</span>
+      </div>
+
+      <div class="rail-sep"></div>
+      <button class="bg-square rail-bg" id="bgSquare" type="button" title="Цвет фона">
+        <span class="bg-square-label">фон</span>
+      </button>
 
       <div class="rail-sep"></div>
       <button class="pipette-btn" id="pipetteBtn" type="button" aria-label="Пипетка" title="Взять цвет с холста">💧</button>
       <button class="toggle-btn" id="smoothBtn" type="button" aria-label="Плавность" aria-pressed="false" title="Плавность: выкл">≈</button>
-
-      <div class="rail-sep"></div>
-      <button class="rail-button" id="undoBtn" type="button" aria-label="Отменить" title="Отменить штрих (Ctrl+Z)">↶</button>
-      <button class="rail-button danger" id="clearBtn" type="button" aria-label="Очистить" title="Очистить холст">🗑</button>
     </aside>
 
     <section class="stage">
@@ -65,23 +72,11 @@
 
       <div class="color-dock" aria-label="Цвета">
         <div class="ink-blobs" id="inkBlobs"></div>
-        <button class="bg-square" id="bgSquare" type="button" title="Цвет фона">
-          <span class="bg-square-label">фон</span>
-        </button>
+        <div class="dock-actions">
+          <button class="dock-tool" id="undoBtn" type="button" aria-label="Отменить" title="Отменить штрих (Ctrl+Z)"></button>
+          <button class="dock-tool danger" id="clearBtn" type="button" aria-label="Очистить" title="Очистить холст"></button>
+        </div>
         <button class="dock-tool" id="colorEditorBtn" type="button" title="Свои цвета">🎨</button>
-      </div>
-
-      <div class="color-editor card" id="colorEditor" hidden>
-        <div class="color-editor-row">
-          <label>Цвет кисти <input class="ink-color-input" type="color" value="#111827" aria-label="Цвет кисти"></label>
-          <input class="ink-hex-input" type="text" value="#111827" maxlength="7" spellcheck="false" aria-label="HEX цвет кисти">
-        </div>
-        <div class="color-editor-row">
-          <label>Цвет фона <input class="bg-color-input" type="color" value="#ffffff" aria-label="Цвет фона"></label>
-          <input class="bg-hex-input" type="text" value="#ffffff" maxlength="7" spellcheck="false" aria-label="HEX цвет фона">
-        </div>
-        <div class="recent-title">Недавние</div>
-        <div class="palette" id="editorRecent"></div>
       </div>
 
       <div class="stage-footer">
@@ -173,25 +168,41 @@
 
   <div class="palette-popover card" id="palettePopover" hidden>
     <div class="popover-head">
-      <b>Палитра цвета кисти</b>
+      <b id="paletteTitle">Цвет кисти</b>
       <button class="popover-close" id="palettePopoverClose" type="button" aria-label="Закрыть">×</button>
     </div>
-    <div class="palette-picker-label">
-      <span>Палитра цвета кисти</span>
-      <button class="popover-color-input" id="popoverColorInput" type="button" aria-label="Открыть палитру" aria-expanded="false">
-        <span class="popover-swatch" id="popoverSwatch"></span>
-        <span class="popover-swatch-label">Открыть палитру</span>
-      </button>
-      <div class="palette-grid" id="paletteGrid" hidden></div>
-      <label class="palette-native-label" id="paletteNativeWrap" hidden>
-        <span>Свой цвет</span>
-        <input class="palette-native-input ink-color-input" id="paletteNativeInput" type="color" value="#111827" aria-label="Свой цвет кисти">
+    <div class="palette-targets" id="paletteTargets">
+      <button class="palette-target active" type="button" data-target="ink">Кисть</button>
+      <button class="palette-target" type="button" data-target="bg">Фон</button>
+    </div>
+    <div class="palette-preview">
+      <span class="palette-current" id="paletteCurrent"></span>
+      <label class="palette-hex-label">
+        <span>HEX</span>
+        <input class="popover-hex-input" id="paletteHex" type="text" value="#111827" maxlength="7" spellcheck="false" aria-label="HEX цвета">
       </label>
     </div>
-    <label class="palette-hex-label">
-      <span>HEX</span>
-      <input class="popover-hex-input" id="popoverHexInput" type="text" value="#111827" maxlength="7" spellcheck="false" aria-label="HEX цвет кисти">
-    </label>
+    <div class="palette-sv" id="paletteSv" aria-label="Выбор цвета">
+      <span class="palette-sv-handle" id="paletteSvHandle"></span>
+    </div>
+    <input class="palette-hue" id="paletteHue" type="range" min="0" max="360" step="1" value="210" aria-label="Оттенок">
+    <div class="palette-grid" id="paletteGrid"></div>
+    <div class="recent-title">Недавние</div>
+    <div class="palette-recent" id="paletteRecent"></div>
+  </div>
+
+  <div class="screen-overlay" id="loadingOverlay" role="status" aria-live="polite">
+    <div class="overlay-card">
+      <span class="overlay-spinner" aria-hidden="true"></span>
+      <b>подключение</b>
+    </div>
+  </div>
+
+  <div class="screen-overlay duplicate-overlay" id="duplicateOverlay" hidden role="alert">
+    <div class="overlay-card">
+      <b>игра открыта в другой вкладке</b>
+      <a class="button primary small" href="index.html">Вернуться на главную</a>
+    </div>
   </div>
 
   <dialog class="modal" id="nameModal">
@@ -209,6 +220,8 @@
   <script src="game-state.js"></script>
   <script src="game-words.js"></script>
   <script src="game-room.js"></script>
+  <script src="game-palette.js"></script>
+  <script src="game-session.js"></script>
   <script src="game-brushes.js"></script>
   <script src="game-render.js"></script>
   <script src="game-network.js"></script>

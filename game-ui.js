@@ -23,7 +23,7 @@
   
     el.chatForm.addEventListener('submit', function (event) {
       event.preventDefault();
-      if (!state || isBannedMe() || isHitPaused()) return;
+      if (sessionKicked || !state || isBannedMe() || isHitPaused()) return;
       var text = el.chatInput.value.trim();
       if (!text) return;
       var result = !isDrawer() ? checkAnswer(text) : { hit: false, newWords: [] };

@@ -75,22 +75,12 @@
     }
   
     function renderPalettes() {
-      var recent = (profile.recentColors || []).slice(0, 9);
-      while (recent.length < 9) recent.push('');
       if (el.inkBlobs) el.inkBlobs.innerHTML = PRESET_COLORS.map(function (c) { return swatchButton(c, 'ink-blob '); }).join('');
-      if (el.editorRecent) {
-        el.editorRecent.innerHTML = recent.map(function (color) {
-          return color ? swatchButton(color, 'swatch ') : '<span class="empty-swatch"></span>';
-        }).join('');
-      }
-      el.bgSquare.style.background = tool.bg;
+      if (el.bgSquare) el.bgSquare.style.background = tool.bg;
     }
-  
+
     function applyColorInputs() {
-      [].forEach.call(el.inkColorInputs, function (input) { input.value = tool.color; });
-      [].forEach.call(el.inkHexInputs, function (input) { input.value = tool.color; });
-      [].forEach.call(el.bgColorInputs, function (input) { input.value = tool.bg; });
-      [].forEach.call(el.bgHexInputs, function (input) { input.value = tool.bg; });
+      if (typeof syncPaletteInputs === 'function') syncPaletteInputs();
     }
   
     function renderToolGrid() {
@@ -200,6 +190,7 @@
       renderTimer();
       scheduleBaseRedraw();
       scheduleDrafts();
+      if (state && client && client.connected && !syncDone && typeof markSynced === 'function') markSynced();
     }
   
     G.renderPlayers = renderPlayers;

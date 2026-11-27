@@ -1,24 +1,36 @@
-/* Room startup: timers and initial render. */
+/* Room startup: sync overlay, timers and initial render. */
 (function (G) {
   with (G) {
+    function markSynced() {
+      if (syncDone || sessionKicked) return;
+      syncDone = true;
+      if (el.loadingOverlay) el.loadingOverlay.hidden = true;
+      document.body.classList.remove('syncing');
+    }
+
+    G.markSynced = markSynced;
+
     setInterval(function () {
+      if (sessionKicked) return;
       if (client && client.connected) publishPresence(true);
       if (state) ensureDrawer();
       checkTimeout();
       issueHintIfNeeded();
       renderTimer();
     }, 5000);
-  
+
     setInterval(function () {
+      if (sessionKicked) return;
       if (client && client.connected) renderTimer();
       if (state) {
         issueHintIfNeeded();
         renderWord();
       }
     }, 1000);
-  
+
     el.nameInput.value = profile.named ? profile.name : '';
-    if (!profile.named) el.nameModal.showModal();
+    if (!profile.named && !sessionKicked) el.nameModal.showModal();
+    if (sessionKicked) return;
     renderToolsOnce();
     applyMeta();
     renderAll();

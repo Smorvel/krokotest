@@ -81,7 +81,7 @@
       s.wordHistory = Array.isArray(s.wordHistory) ? s.wordHistory.slice(-HISTORY_LIMIT) : [];
       s.guessedWords = Array.isArray(s.guessedWords) ? s.guessedWords : [];
       s.dictionary = { id: dictionary.id, name: dictionary.name, words: dictionary.words.slice(0, 500) };
-      s.bg = typeof s.bg === 'string' ? s.bg : '#ffffff';
+      s.bg = typeof s.bg === 'string' ? s.bg : (tool.bg || '#252932');
       s.drawer = typeof s.drawer === 'string' ? s.drawer : '';
       s.pausedUntil = Number(s.pausedUntil) || 0;
       s.hitInfo = s.hitInfo && typeof s.hitInfo === 'object' ? s.hitInfo : null;
@@ -108,18 +108,18 @@
     }
   
     function isDrawer() {
-      return !!state && state.drawer === myId && !isBannedMe();
+      return !sessionKicked && !!state && state.drawer === myId && !isBannedMe();
     }
   
     function publishState() {
-      if (!state || !client || !client.connected) return;
+      if (sessionKicked || !state || !client || !client.connected) return;
       state.updatedAt = Date.now();
       state.updatedBy = myId;
       K.publish(client, K.topic(room, 'state'), state, true);
     }
   
     function publishPresence(online) {
-      if (!client || !client.connected) return;
+      if (sessionKicked || !client || !client.connected) return;
       K.publish(client, K.topic(room, 'presence/' + myId), {
         id: myId,
         name: profile.name,
@@ -132,7 +132,7 @@
     }
   
     function publishDraft(stroke) {
-      if (!client || !client.connected) return;
+      if (sessionKicked || !client || !client.connected) return;
       K.publish(client, K.topic(room, 'draft/' + myId), {
         id: myId,
         owner: myId,
