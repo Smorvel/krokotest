@@ -55,6 +55,8 @@
   ];
 
   var COLORS = ['#34d399', '#38bdf8', '#a78bfa', '#f472b6', '#fbbf24', '#fb923c', '#22d3ee', '#f87171'];
+  var AVATAR_EYES = ['round', 'happy', 'sleepy', 'wide', 'wink'];
+  var AVATAR_MOUTHS = ['smile', 'grin', 'neutral', 'frown', 'surprised'];
 
   function uid() {
     return Date.now().toString(36).slice(-5) + Math.random().toString(36).slice(2, 8);
@@ -69,6 +71,37 @@
 
   function colorFor(name) {
     return COLORS[hash(name) % COLORS.length];
+  }
+
+  function safeHex(value, fallback) {
+    return /^#[0-9a-fA-F]{6}$/.test(String(value || '')) ? String(value).toLowerCase() : fallback;
+  }
+
+  function avatarMarkup(person, className) {
+    person = person || {};
+    var avatar = person.avatar && typeof person.avatar === 'object' ? person.avatar : {};
+    var body = safeHex(avatar.body, safeHex(person.color, colorFor(person.name || navigator.userAgent)));
+    var bg = safeHex(avatar.bg, '#252932');
+    var eyes = AVATAR_EYES.indexOf(avatar.eyes) >= 0 ? avatar.eyes : 'round';
+    var mouth = AVATAR_MOUTHS.indexOf(avatar.mouth) >= 0 ? avatar.mouth : 'smile';
+    var eyeMarkup = {
+      round: '<circle cx="25" cy="31" r="3.4" fill="#111827"/><circle cx="39" cy="31" r="3.4" fill="#111827"/>',
+      happy: '<path d="M20 32q5-6 10 0M34 32q5-6 10 0" fill="none" stroke="#111827" stroke-width="2.5" stroke-linecap="round"/>',
+      sleepy: '<path d="M21 32h8M35 32h8" fill="none" stroke="#111827" stroke-width="2.5" stroke-linecap="round"/>',
+      wide: '<circle cx="25" cy="31" r="5" fill="#111827"/><circle cx="39" cy="31" r="5" fill="#111827"/>',
+      wink: '<circle cx="25" cy="31" r="3.4" fill="#111827"/><path d="M35 32h8" fill="none" stroke="#111827" stroke-width="2.5" stroke-linecap="round"/>'
+    }[eyes];
+    var mouthMarkup = {
+      smile: '<path d="M24 42q8 8 16 0" fill="none" stroke="#111827" stroke-width="2.5" stroke-linecap="round"/>',
+      grin: '<path d="M23 41h18v4q-9 7-18 0z" fill="#111827"/><path d="M26 43h12" stroke="#f8faf9" stroke-width="1.5" stroke-linecap="round"/>',
+      neutral: '<path d="M25 44h14" fill="none" stroke="#111827" stroke-width="2.5" stroke-linecap="round"/>',
+      frown: '<path d="M24 46q8-8 16 0" fill="none" stroke="#111827" stroke-width="2.5" stroke-linecap="round"/>',
+      surprised: '<ellipse cx="32" cy="44" rx="4" ry="5" fill="#111827"/>'
+    }[mouth];
+    return '<svg class="avatar ' + escapeHtml(className || '') + '" viewBox="0 0 64 64" role="img" aria-label="Аватар">' +
+      '<rect width="64" height="64" rx="14" fill="' + safeHex(bg, '#252932') + '"/>' +
+      '<circle cx="14" cy="35" r="5" fill="' + body + '"/><circle cx="50" cy="35" r="5" fill="' + body + '"/>' +
+      '<circle cx="32" cy="35" r="20" fill="' + body + '"/>' + eyeMarkup + mouthMarkup + '</svg>';
   }
 
   function escapeHtml(value) {
@@ -145,10 +178,12 @@
   function getProfile() {
     var profile = read(KEY_PROFILE, null);
     if (!profile || !profile.id) {
+      var initialColor = colorFor(navigator.userAgent);
       profile = {
         id: uid(),
         name: 'Игрок ' + (10 + hash(navigator.userAgent) % 90),
-        color: colorFor(navigator.userAgent),
+        color: initialColor,
+        avatar: { body: initialColor, eyes: 'round', mouth: 'smile', bg: '#252932' },
         named: false,
         inkColor: '#111827',
         bgColor: '#252932',
@@ -162,6 +197,12 @@
       };
       write(KEY_PROFILE, profile);
     }
+    if (!profile.color) profile.color = colorFor(profile.name || navigator.userAgent);
+    if (!profile.avatar || typeof profile.avatar !== 'object') profile.avatar = {};
+    profile.avatar.body = safeHex(profile.avatar.body, profile.color);
+    profile.avatar.bg = safeHex(profile.avatar.bg, '#252932');
+    if (AVATAR_EYES.indexOf(profile.avatar.eyes) < 0) profile.avatar.eyes = 'round';
+    if (AVATAR_MOUTHS.indexOf(profile.avatar.mouth) < 0) profile.avatar.mouth = 'smile';
     if (!Array.isArray(profile.recentColors)) profile.recentColors = ['#111827', '#ffffff', '#ef4444', '#38bdf8'];
     if (!Array.isArray(profile.recentBgColors)) profile.recentBgColors = ['#252932', '#ffffff', '#111827'];
     if (!profile.inkColor) profile.inkColor = '#111827';
@@ -258,9 +299,12 @@
     ROOT: ROOT,
     DEFAULT_ROOM: DEFAULT_ROOM,
     BUILTIN_DICTIONARIES: BUILTIN_DICTIONARIES,
+    AVATAR_EYES: AVATAR_EYES,
+    AVATAR_MOUTHS: AVATAR_MOUTHS,
     uid: uid,
     hash: hash,
     colorFor: colorFor,
+    avatarMarkup: avatarMarkup,
     escapeHtml: escapeHtml,
     maskWord: maskWord,
     getFingerprint: getFingerprint,

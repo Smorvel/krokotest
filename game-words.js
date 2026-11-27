@@ -88,7 +88,10 @@
     }
   
     function reactionIcon(value) {
-      return value === 'like' ? '👍' : (value === 'dislike' ? '👎' : '');
+      if (value !== 'like' && value !== 'dislike') return '';
+      var icon = value === 'like' ? ICONS.like : ICONS.dislike;
+      var label = value === 'like' ? 'Лайк' : 'Дизлайк';
+      return '<span class="react-mark ' + value + '" aria-label="' + label + '">' + (icon || '') + '</span>';
     }
   
     function selectedDictionaryIds() {

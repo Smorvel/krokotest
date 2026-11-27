@@ -100,7 +100,7 @@
       });
       if (!isBannedMe() && !list.some(function (p) { return p.id === myId; })) {
         list.push({
-          id: myId, name: profile.name, color: profile.color, fingerprint: myFingerprint,
+          id: myId, name: profile.name, color: profile.color, avatar: profile.avatar, fingerprint: myFingerprint,
           joinedAt: sessionJoinedAt, ts: Date.now(), online: true
         });
       }
@@ -124,6 +124,7 @@
         id: myId,
         name: profile.name,
         color: profile.color,
+        avatar: profile.avatar,
         fingerprint: myFingerprint,
         joinedAt: sessionJoinedAt,
         online: online !== false,

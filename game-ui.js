@@ -62,6 +62,8 @@
       var btn = event.target.closest('[data-react]');
       if (!btn || !isDrawer() || isBannedMe() || !state) return;
       var id = btn.dataset.msg;
+      var message = state.messages.filter(function (m) { return m.id === id; })[0];
+      if (!message || isOldMessage(message)) return;
       var value = btn.dataset.react === 'like' ? 'like' : 'dislike';
       state.reactions[id] = { value: reactionValue(id) === value ? '' : value };
       publishState();

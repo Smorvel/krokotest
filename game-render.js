@@ -6,12 +6,11 @@
       el.online.textContent = players.length;
       el.playersCount.textContent = players.length;
       el.players.innerHTML = players.map(function (player) {
-        var initial = K.escapeHtml(player.name.trim().charAt(0).toUpperCase() || '?');
         var tag = state && state.drawer === player.id ? 'рисует' : (player.id === myId ? 'вы' : '');
         var ban = isCreator() && player.id !== myId && !isFingerprintBanned(player.fingerprint)
           ? '<button class="ban-btn" type="button" data-ban="' + K.escapeHtml(player.id) + '">бан</button>'
           : '';
-        return '<li class="player"><span class="avatar" style="background:' + K.escapeHtml(player.color || K.colorFor(player.name)) + '">' + initial + '</span>' +
+        return '<li class="player">' + K.avatarMarkup(player) +
           '<span class="player-name">' + K.escapeHtml(player.name) + '</span>' +
           (tag ? '<span class="player-tag">' + tag + '</span>' : '') + ban + '</li>';
       }).join('');
@@ -31,11 +30,15 @@
       }).join('');
     }
   
+    function isOldMessage(message) {
+      return !!(message && message.round && state && state.round && Number(message.round) < Number(state.round));
+    }
+
     function reactionMarkup(message) {
       if (message.system) return '';
       var value = reactionValue(message.id);
-      if (!isDrawer() || isBannedMe()) {
-        return value ? '<span class="react-mark">' + reactionIcon(value) + '</span>' : '';
+      if (!isDrawer() || isBannedMe() || isOldMessage(message)) {
+        return value ? reactionIcon(value) : '';
       }
       return '<span class="reaction-slot">' +
         '<button class="react-btn' + (value === 'like' ? ' active' : '') + '" type="button" data-react="like" data-msg="' + K.escapeHtml(message.id) + '" aria-label="Лайк">' + (ICONS.like || '') + '</button>' +
@@ -49,7 +52,7 @@
       el.messages.innerHTML = state.messages.filter(function (m) {
         return !(m.ownerId && bannedIds.indexOf(m.ownerId) >= 0);
       }).map(function (message) {
-        var old = message.round && state.round && Number(message.round) < state.round;
+        var old = isOldMessage(message);
         var cls = 'message' + (old ? ' old' : '') + (message.system ? ' system' : '') + (message.hit ? ' hit' : '');
         var body = message.system
           ? K.escapeHtml(message.text)
@@ -197,6 +200,7 @@
   
     G.renderPlayers = renderPlayers;
     G.renderBanList = renderBanList;
+    G.isOldMessage = isOldMessage;
     G.reactionMarkup = reactionMarkup;
     G.renderMessages = renderMessages;
     G.renderWord = renderWord;

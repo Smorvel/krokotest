@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Кроко — онлайн-игра в крокодила: рисуй слова и угадывай рисунки вместе с друзьями.">
+  <meta name="description" content="Кроко — онлайн-игра в крокодила: Рисуй! Угадывай!">
   <title>Кроко — онлайн-крокодил</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -12,28 +12,19 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body data-page="home">
-  <header class="topbar">
-    <a class="brand" href="index.html"><span class="brand-mark">🎨</span><span>Кроко</span></a>
-    <nav class="topnav">
-      <a href="#rooms">Комнаты</a>
-      <a href="#how">Как играть</a>
-      <a href="cabinet.html">Мой кабинет</a>
-    </nav>
-    <a class="button primary small" href="#create">Создать комнату</a>
-  </header>
-
   <main class="home">
     <section class="hero">
       <div class="hero-copy">
         <div class="eyebrow"><span class="live-dot"></span>онлайн · без регистрации</div>
-        <h1>Рисуй слова.<br><span>Угадывай вместе.</span></h1>
-        <p class="lead">Простая игра в крокодила для компании. Открой комнату, стань художником или угадывай — всё обновляется у всех игроков сразу.</p>
+        <h1><span>Рисуй!</span> Угадывай!</h1>
+        <p class="lead">Открой комнату или зайди в общую — слово увидят только рисует, а угадывают все сразу. Никакой регистрации и загрузок.</p>
         <div class="hero-actions">
           <a class="button primary" href="game.html">Играть</a>
-          <a class="button ghost" href="#create">Создать комнату</a>
+          <a class="button ghost" href="#my-room">Моя комната</a>
+          <a class="button ghost" href="#avatar">Аватар</a>
         </div>
         <div class="hero-stats">
-          <div><b id="statRooms">1</b><span>комната онлайн</span></div>
+          <div><b id="statRooms">1</b><span>активная комната</span></div>
           <div><b id="statOnline">0</b><span>игроков сейчас</span></div>
           <div><b id="statDicts">5</b><span>словарей</span></div>
         </div>
@@ -55,35 +46,61 @@
     <section class="rooms" id="rooms">
       <div class="section-heading">
         <div>
-          <h2>Комнаты</h2>
-          <p class="muted">Общая комната всегда открыта. Свою комнату можно создать ниже — ссылка будет работать у всех.</p>
+          <h2>Активные комнаты</h2>
+          <p class="muted">Общая комната открыта всегда. Остальные комнаты появляются, когда в них есть игроки.</p>
         </div>
       </div>
       <div class="room-list" id="roomList"></div>
     </section>
 
-    <section class="create-section" id="create">
+    <section class="my-room" id="my-room">
       <div class="section-heading">
         <div>
-          <h2>Своя комната</h2>
-          <p class="muted">Вы станете создателем: сможете менять словари и удалять нарушителей из игры.</p>
+          <h2>Моя комната</h2>
+          <p class="muted">Одна комната на этот браузер: создайте её один раз и меняйте название при необходимости.</p>
         </div>
       </div>
-      <form class="create-form card" id="createForm">
-        <label>
-          <span>Название комнаты</span>
-          <input id="roomName" maxlength="24" placeholder="Например, Друзья" required>
-        </label>
-        <button class="button primary" type="submit">Создать комнату</button>
-      </form>
+      <div id="myRoomCard"></div>
     </section>
 
-    <section class="how" id="how">
-      <h2>Как играть</h2>
-      <div class="steps">
-        <article><span>1</span><h3>Зайди в комнату</h3><p>Игроки собираются автоматически, очередь рисования соблюдается.</p></article>
-        <article><span>2</span><h3>Рисуй или угадывай</h3><p>Художник видит слово, остальные — только точки и подсказки.</p></article>
-        <article><span>3</span><h3>Получай очки</h3><p>Первый угадавший получает 10 очков, и ход переходит дальше по очереди.</p></article>
+    <section class="avatar-section" id="avatar">
+      <div class="section-heading">
+        <div>
+          <h2>Аватар</h2>
+          <p class="muted">Цвет тела, глаза, рот и фон — аватар увидят другие игроки.</p>
+        </div>
+      </div>
+      <div class="avatar-editor card">
+        <div class="avatar-preview-wrap">
+          <div class="avatar-preview" id="avatarPreview"></div>
+          <b class="avatar-preview-name" id="avatarPreviewName">Игрок</b>
+        </div>
+        <div class="avatar-controls">
+          <label class="settings-field">
+            <span>Имя в игре</span>
+            <input id="avatarName" maxlength="20" placeholder="Как тебя зовут">
+          </label>
+          <label class="settings-field">
+            <span>Цвет тела</span>
+            <input id="avatarBody" type="color" value="#34d399">
+          </label>
+          <label class="settings-field">
+            <span>Глаза</span>
+            <select id="avatarEyes"></select>
+          </label>
+          <label class="settings-field">
+            <span>Рот</span>
+            <select id="avatarMouth"></select>
+          </label>
+          <label class="settings-field">
+            <span>Фон аватарки</span>
+            <input id="avatarBg" type="color" value="#252932">
+          </label>
+        </div>
+        <div class="avatar-actions">
+          <button class="button primary small" id="avatarSave" type="button">Сохранить аватар</button>
+          <span class="saved-line" id="avatarSaved" hidden>Сохранено</span>
+        </div>
       </div>
     </section>
   </main>

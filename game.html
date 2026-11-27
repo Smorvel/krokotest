@@ -11,21 +11,6 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body data-page="game" class="syncing">
-  <header class="topbar game-topbar" hidden>
-    <a class="brand" href="index.html"><span class="brand-mark">🎨</span><span>Кроко</span></a>
-    <div class="room-meta">
-      <strong id="roomTitle">Простые</strong>
-      <span class="room-badge" id="roomBadge" hidden>вы создатель</span>
-      <span class="live-dot"></span>
-      <span><b id="onlineCount">1</b> онлайн</span>
-    </div>
-    <div class="top-actions">
-      <span class="connection" id="connectionText">подключаем...</span>
-      <button class="button ghost small" id="openSettingsBtn" type="button">Кабинет и настройки</button>
-      <a class="button ghost small" href="index.html">Выйти</a>
-    </div>
-  </header>
-
   <main class="game-shell">
     <aside class="tool-rail" id="toolRail" aria-label="Инструменты рисования">
       <div class="tool-grid" id="toolGrid"></div>
@@ -80,8 +65,17 @@
       </div>
 
       <div class="stage-footer">
-        <span id="statusText">Подключаем к комнате...</span>
-        <span class="muted" id="syncText">онлайн-синхронизация</span>
+        <span class="room-line">
+          <strong id="roomTitle">Общая</strong>
+          <span class="room-badge" id="roomBadge" hidden>вы создатель</span>
+          <span class="live-dot"></span>
+          <span><b id="onlineCount">1</b> онлайн</span>
+          <span class="connection" id="connectionText">подключаем...</span>
+        </span>
+        <span class="footer-status">
+          <span id="statusText">Подключаем к комнате...</span>
+          <span class="muted" id="syncText">онлайн-синхронизация</span>
+        </span>
       </div>
     </section>
 
@@ -92,7 +86,10 @@
           <button class="panel-tab" data-tab="players" type="button" role="tab">Игроки <span class="tab-count" id="playersCount">1</span></button>
           <button class="panel-tab" data-tab="settings" type="button" role="tab">Настройки</button>
         </div>
-        <a class="panel-leave" id="leaveRoomBtn" href="index.html" title="Выйти из комнаты" aria-label="Выйти из комнаты">🚪</a>
+        <span class="panel-actions">
+          <button class="panel-leave" id="openSettingsBtn" type="button" title="Кабинет и настройки" aria-label="Кабинет и настройки">⚙</button>
+          <a class="panel-leave" id="leaveRoomBtn" href="index.html" title="Выйти из комнаты" aria-label="Выйти из комнаты">🚪</a>
+        </span>
       </div>
 
       <section class="card tab-panel chat-panel" data-panel="chat">
@@ -115,7 +112,7 @@
         <div class="settings-scroll">
           <div class="settings-block">
             <h3>Комната</h3>
-            <p class="muted settings-line">Название: <b id="settingsRoomName">Простые</b></p>
+            <p class="muted settings-line">Название: <b id="settingsRoomName">Общая</b></p>
 
             <div class="settings-subhead">Словари в раунде</div>
             <div class="dict-check-list" id="dictCheckList"></div>

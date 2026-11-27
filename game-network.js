@@ -3,6 +3,7 @@
   with (G) {
     function applyMeta() {
       if (!meta) return;
+      if (room === K.DEFAULT_ROOM) meta.name = 'Общая';
       el.roomTitle.textContent = meta.name || room;
       renderTools();
     }
@@ -14,7 +15,7 @@
       var dict = local && local.dictionary ? local.dictionary : fallbackDictionary();
       meta = {
         slug: room,
-        name: local ? local.name : (room === K.DEFAULT_ROOM ? 'Простые' : room),
+        name: room === K.DEFAULT_ROOM ? 'Общая' : (local ? local.name : room),
         creatorId: local ? (local.creatorId || '') : (room === K.DEFAULT_ROOM ? '' : myId),
         creatorName: local ? local.creatorName : profile.name,
         creatorFingerprint: local ? (local.creatorFingerprint || '') : (room === K.DEFAULT_ROOM ? '' : myFingerprint),
@@ -173,7 +174,7 @@
         expiredAt: 0
       });
       chooseNextWord();
-      systemMessage('Комната «' + (meta ? meta.name : 'Простые') + '» готова. Удачи!');
+      systemMessage('Комната «' + (meta ? meta.name : 'Общая') + '» готова. Удачи!');
       handledStart = 0;
       publishState();
       renderAll();
