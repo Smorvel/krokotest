@@ -68,6 +68,7 @@
     function setInk(color) {
       var value = normalizeHex(color);
       if (!value) return false;
+      var wasEraser = tool.current === 'eraser';
       tool.color = value;
       profile.inkColor = value;
       K.setProfile(profile);
@@ -75,6 +76,15 @@
       renderKnobs();
       renderPalettes();
       syncPaletteInputs();
+      if (wasEraser) {
+        /* Выбор цвета всегда возвращает к последней обычной кисти. */
+        var next = previousTool && previousTool !== 'eraser' && previousTool !== 'pipette'
+          ? previousTool
+          : 'brush';
+        tool.current = next;
+        renderTools();
+        refreshCursor();
+      }
       return true;
     }
 

@@ -221,6 +221,8 @@
       state.round += 1;
       state.startedAt = Date.now();
       Object.keys(rasterImages).forEach(function (id) { delete rasterImages[id]; });
+      Object.keys(rasterBgCache).forEach(function (id) { delete rasterBgCache[id]; });
+      rasterBgCacheKeys.length = 0;
       state.strokes = [];
       state.hitInfo = null;
       state.reveal = null;
@@ -243,36 +245,18 @@
       if (!state || state.reveal || isHitPaused() || state.roundMs === 0) return;
       var expired = Date.now() - state.startedAt >= state.roundMs;
       if (!expired) return;
-      var guessers = presentPlayers().filter(function (p) { return p.id !== state.drawer; });
-  
-      if (!guessers.length) {
-        if ((isDrawer() || isCreator()) && !state.waitingForPlayers) {
-          state.waitingForPlayers = true;
-          state.expiredAt = Date.now();
-          handledStart = 0;
-          systemMessage('Время вышло. Ждём игроков — раунд не заканчивается.');
-          publishState();
-          renderAll();
-        }
-        return;
-      }
-  
       if (!isDrawer() && !isCreator()) return;
-  
-      if (state.waitingForPlayers) {
-        state.waitingForPlayers = false;
-        state.expiredAt = 0;
-        state.startedAt = Date.now() - state.roundMs + 60000;
-        handledStart = 0;
-        systemMessage('Игрок вошёл — раунд продлён на 60 секунд.');
-        publishState();
-        renderAll();
-        return;
-      }
-  
       if (handledStart === state.startedAt) return;
+
+      /* Никто не угадал — слово не показываем, сразу начинаем новый раунд. */
       handledStart = state.startedAt;
-      beginReveal('Время вышло!');
+      state.waitingForPlayers = false;
+      state.expiredAt = 0;
+      state.lastWord = null;
+      state.hitInfo = null;
+      rotateDrawer('Время вышло!');
+      publishState();
+      renderAll();
     }
   
     function issueHintIfNeeded() {

@@ -96,8 +96,13 @@
         profile.shapeMode = tool.shapeMode;
         K.setProfile(profile);
       } else {
+        var previous = tool.current;
         tool.current = btn.dataset.tool;
-        if (tool.current !== 'pipette') previousTool = tool.current;
+        if (tool.current === 'eraser') {
+          if (previous !== 'eraser') previousTool = previous;
+        } else if (tool.current !== 'pipette') {
+          previousTool = tool.current;
+        }
       }
       renderTools();
       refreshCursor();
@@ -109,7 +114,11 @@
     });
   
     el.pipetteBtn.addEventListener('click', function () {
-      if (tool.current !== 'pipette') previousTool = tool.current;
+      if (tool.current !== 'pipette') {
+        previousTool = tool.current === 'eraser'
+          ? (previousTool && previousTool !== 'eraser' ? previousTool : 'brush')
+          : tool.current;
+      }
       tool.current = 'pipette';
       renderTools();
       refreshCursor();

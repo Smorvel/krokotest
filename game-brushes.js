@@ -212,7 +212,7 @@
       return cached;
     }
   
-    function paintStroke(context, stroke) {
+    function paintStroke(context, stroke, transparentErase) {
       if (!stroke || !Array.isArray(stroke.points) || !stroke.points.length) return;
       var points = stroke.points;
       var size = Math.max(2, Number(stroke.size) || 18);
@@ -231,11 +231,17 @@
       context.globalCompositeOperation = 'source-over';
   
       if (stroke.tool === 'eraser') {
-        var eraseColor = stroke.bg || (state && state.bg) || tool.bg || '#ffffff';
         context.globalAlpha = 1;
-        context.strokeStyle = eraseColor;
-        context.fillStyle = eraseColor;
         context.lineWidth = size * 1.5;
+        if (transparentErase) {
+          /* В архиве ластик вырезает прозрачность, чтобы фон оставался сменным. */
+          context.globalCompositeOperation = 'destination-out';
+          context.strokeStyle = '#000000';
+        } else {
+          /* Всегда рисуем текущим фоном: старый цвет в штрихе не хранится. */
+          context.strokeStyle = (state && state.bg) || tool.bg || '#ffffff';
+        }
+        context.fillStyle = context.strokeStyle;
         strokePath(context, points, smooth);
         context.stroke();
         context.restore();
@@ -399,6 +405,38 @@
       });
     }
 
+    function rasterSource(stroke, img) {
+      var oldBg = typeof stroke.bg === 'string' ? stroke.bg.toLowerCase() : '';
+      var bg = String((state && state.bg) || tool.bg || '#ffffff').toLowerCase();
+      if (!oldBg || oldBg === bg) return img;
+      var key = stroke.id + '|' + bg;
+      if (rasterBgCache[key]) return rasterBgCache[key];
+      var recolored = document.createElement('canvas');
+      recolored.width = img.naturalWidth;
+      recolored.height = img.naturalHeight;
+      var c = recolored.getContext('2d', { willReadFrequently: true });
+      c.drawImage(img, 0, 0);
+      var image = c.getImageData(0, 0, recolored.width, recolored.height);
+      var data = image.data;
+      var from = hexToRgb(oldBg);
+      var to = hexToRgb(bg);
+      for (var i = 0; i < data.length; i += 4) {
+        if (data[i + 3] && Math.abs(data[i] - from[0]) <= 6 &&
+            Math.abs(data[i + 1] - from[1]) <= 6 && Math.abs(data[i + 2] - from[2]) <= 6) {
+          data[i] = to[0];
+          data[i + 1] = to[1];
+          data[i + 2] = to[2];
+        }
+      }
+      c.putImageData(image, 0, 0);
+      rasterBgCache[key] = recolored;
+      rasterBgCacheKeys.push(key);
+      while (rasterBgCacheKeys.length > 4) {
+        delete rasterBgCache[rasterBgCacheKeys.shift()];
+      }
+      return recolored;
+    }
+
     function drawRasterStroke(context, stroke) {
       var img = stroke && rasterImages[stroke.id];
       if (!img || !img.complete || !img.naturalWidth) return false;
@@ -409,7 +447,7 @@
       var dh = sh * scale;
       var dx = (canvas.width - dw) / 2;
       var dy = (canvas.height - dh) / 2;
-      context.drawImage(img, dx, dy, dw, dh);
+      context.drawImage(rasterSource(stroke, img), dx, dy, dw, dh);
       return true;
     }
 
@@ -423,7 +461,7 @@
         floodFill(context, stroke.points[0], stroke.color, stroke.alpha);
         return;
       }
-      paintStroke(context, stroke);
+      paintStroke(context, stroke, true);
     }
 
     function compactStrokes() {
@@ -449,8 +487,6 @@
       archive.width = canvas.width;
       archive.height = canvas.height;
       var archiveCtx = archive.getContext('2d', { willReadFrequently: true });
-      archiveCtx.fillStyle = (state && state.bg) || tool.bg || '#ffffff';
-      archiveCtx.fillRect(0, 0, archive.width, archive.height);
       old.forEach(function (stroke) { drawArchivedStroke(archiveCtx, stroke); });
 
       var image = archive.toDataURL('image/png');
@@ -463,7 +499,7 @@
         h: archive.height,
         cw: canvas.width,
         ch: canvas.height,
-        bg: (state && state.bg) || tool.bg || '#ffffff',
+        bg: '',
         points: [],
         at: Date.now()
       };

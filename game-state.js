@@ -29,7 +29,7 @@
 
   G.PRESET_COLORS = [
     '#000000', '#ffffff', '#606060', '#d32f2f', '#f97316', '#fbbf24',
-    '#37c206', '#ffe7b9', '#22d3ee', '#2154ee', '#8147e4', '#fa28b9'
+    '#37c206', '#ffe7b9', '#22d3ee', '#2154ee', '#8147e4', '#fa28b9', '#87461e'
   ];
 
   G.SHAPE_LABELS = { square: 'квадрат', circle: 'круг', stripe: 'полоса' };
@@ -70,6 +70,8 @@
   G.fillCache = {};
   G.fillCacheKeys = [];
   G.rasterImages = {};
+  G.rasterBgCache = {};
+  G.rasterBgCacheKeys = [];
   G.knobDrag = null;
   G.stampCache = {};
   G.smoothPoint = null;
