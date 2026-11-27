@@ -51,6 +51,7 @@
       client.subscribe(K.topic(room, 'state'), { qos: 1 });
       client.subscribe(K.topic(room, 'presence/+'), { qos: 1 });
       client.subscribe(K.topic(room, 'draft/+'), { qos: 1 });
+      client.subscribe(K.topic(room, 'stroke/+'), { qos: 1 });
       subscribedAt = Date.now();
       presenceReadyAt = subscribedAt + 5000;
       publishPresence(true);
@@ -74,6 +75,13 @@
       el.connection.classList.remove('online');
     });
   
+    function flushPendingStrokes() {
+      var pending = Object.keys(pendingStrokes).map(function (id) { return pendingStrokes[id]; });
+      pendingStrokes = {};
+      pending.sort(function (a, b) { return (Number(a.seq) || 0) - (Number(b.seq) || 0); });
+      pending.forEach(applyStrokeEvent);
+    }
+
     client.on('message', function (topic, message) {
       if (sessionKicked) return;
       var data = K.parse(message);
@@ -110,6 +118,7 @@
           localDraft = null;
           drawing = false;
         }
+        flushPendingStrokes();
         applyMeta();
         renderAll();
         if (state.reveal) scheduleRevealResolution(state.reveal);
@@ -137,10 +146,26 @@
         if (!data.id || data.id === myId || isPlayerBanned(data)) return;
         if (data.stroke) {
           remoteDrafts[data.id] = data.stroke;
+        } else if (data.discard) {
+          delete remoteDrafts[data.id];
         } else if (remoteDrafts[data.id]) {
-          remoteDrafts[data.id].pendingUntil = Date.now() + 1200;
+          /* рисунок ещё не подтверждён состоянием — держим его видимым дольше */
+          remoteDrafts[data.id].pendingUntil = Date.now() + 8000;
         }
         scheduleDrafts();
+        return;
+      }
+
+      if (topic.indexOf(K.topic(room, 'stroke/')) === 0) {
+        var eventId = String(data && (data.id || (data.stroke && data.stroke.id)) || '');
+        if (!eventId || isPlayerBanned({ id: data.owner, fingerprint: data.fingerprint })) return;
+        if (state && data.round && Number(data.round) !== Number(state.round)) return;
+        if (!state || (data.round && Number(data.round) !== Number(state.round))) {
+          pendingStrokes[eventId] = data;
+          return;
+        }
+        if (applyStrokeEvent(data)) scheduleDrafts();
+        return;
       }
     });
   

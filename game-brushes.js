@@ -508,13 +508,20 @@
       img.src = image;
       rasterImages[raster.id] = img;
       state.strokes = [raster].concat(state.strokes.slice(cut));
+      var seq = (Number(state.canvasSeq) || 0) + 1;
+      state.canvasSeq = seq;
+      publishStroke(raster, seq);
+      old.forEach(function (stroke) { publishStrokeDeletion(stroke.id, seq); });
     }
 
     function commitStroke(stroke) {
       if (!state || !stroke) return;
       stroke.cw = canvas.width;
       stroke.ch = canvas.height;
+      state.canvasSeq = (Number(state.canvasSeq) || 0) + 1;
+      stroke.seq = state.canvasSeq;
       state.strokes.push(stroke);
+      publishStroke(stroke, stroke.seq);
       compactStrokes();
       publishState();
       scheduleBaseRedraw();

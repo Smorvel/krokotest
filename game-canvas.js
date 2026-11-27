@@ -65,7 +65,7 @@
     canvas.addEventListener('pointermove', function (event) {
       updateCursor(event);
       if (!drawing || !localDraft) return;
-      if (drawingBlocked()) { endStroke(event, true); return; }
+      if (drawingBlocked()) { endStroke(event, false); return; }
       event.preventDefault();
       var raw = pointFromEvent(event);
       var next = tool.smooth && !isShape(tool.current) ? smoothInputPoint(raw, false) : raw;
@@ -86,7 +86,7 @@
     function endStroke(event, discard) {
       if (!drawing) return;
       drawing = false;
-      var skip = discard || drawingBlocked();
+      var skip = !!discard;
       if (localDraft) {
         if (!skip && event && event.type === 'pointerup') {
           var rawEnd = pointFromEvent(event);

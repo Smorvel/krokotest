@@ -89,6 +89,7 @@
         return stroke && typeof stroke === 'object' &&
           ((stroke.tool === 'raster' && typeof stroke.image === 'string') || Array.isArray(stroke.points));
       }).map(migrateStroke).filter(Boolean) : [];
+      s.canvasSeq = Number(s.canvasSeq) || 0;
       s.messages = Array.isArray(s.messages) ? s.messages.slice(-50) : [];
       s.scores = s.scores && typeof s.scores === 'object' ? s.scores : {};
       s.reactions = s.reactions && typeof s.reactions === 'object'
@@ -141,6 +142,10 @@
       return s;
     }
 
+    function strokeIds(strokes) {
+      return (strokes || []).map(function (stroke) { return String(stroke && stroke.id || ''); });
+    }
+
     /* Состояние от другого игрока может быть основано на устаревшей копии.
        Сливаем события, чтобы сообщения и раскрытие слова не исчезали. */
     function mergeState(incoming, previous) {
@@ -182,6 +187,33 @@
         }
       });
       incoming.scores = scores;
+
+      /* Рисунок — это события с монотонным номером. Более старая копия
+         состояния не должна стирать уже опубликованные штрихи. */
+      var incomingSeq = Number(incoming.canvasSeq) || 0;
+      var previousSeq = Number(previous.canvasSeq) || 0;
+      var incomingStrokes = incoming.strokes || [];
+      var previousStrokes = previous.strokes || [];
+      if (!sameRound || incomingSeq > previousSeq) {
+        incoming.strokes = incomingStrokes.slice();
+        if (!sameRound || strokeIds(incoming.strokes).join(',') !== strokeIds(previousStrokes).join(',')) changed = true;
+      } else if (incomingSeq === previousSeq) {
+        var ids = {};
+        var strokes = incomingStrokes.slice();
+        strokes.forEach(function (stroke) { ids[stroke.id] = true; });
+        previousStrokes.forEach(function (stroke) {
+          if (!ids[stroke.id]) {
+            strokes.push(stroke);
+            ids[stroke.id] = true;
+            changed = true;
+          }
+        });
+        incoming.strokes = strokes;
+      } else {
+        incoming.strokes = previousStrokes.slice();
+        incoming.canvasSeq = previousSeq;
+        changed = true;
+      }
 
       /* Фон задаёт текущий художник: чужие устаревшие копии его не перебивают. */
       if (sameRound && previous.bgBy && incoming.drawer === previous.bgBy &&
@@ -260,7 +292,7 @@
       }, true);
     }
   
-    function publishDraft(stroke) {
+    function publishDraft(stroke, discard) {
       if (sessionKicked || !client || !client.connected) return;
       K.publish(client, K.topic(room, 'draft/' + myId), {
         id: myId,
@@ -269,10 +301,79 @@
           id: stroke.id, owner: stroke.owner, tool: stroke.tool,
           color: stroke.color, size: stroke.size, alpha: stroke.alpha,
           smooth: stroke.smooth, shapeMode: stroke.shapeMode,
-          points: stroke.points.slice(0, 4000), bg: stroke.bg
+          points: stroke.points.slice(0, 4000), bg: stroke.bg,
+          cw: stroke.cw, ch: stroke.ch
         } : null,
+        discard: !!discard,
         at: Date.now()
       }, true);
+    }
+
+    /* Каждый завершённый штрих публикуется отдельно, чтобы его потеря
+       при большой общей публикации состояния не скрыла рисунок. */
+    function publishStroke(stroke, seq) {
+      if (sessionKicked || !state || !client || !client.connected || !stroke || !stroke.id) return;
+      K.publish(client, K.topic(room, 'stroke/' + stroke.id), {
+        round: state.round,
+        seq: Number(seq) || Number(state.canvasSeq) || 0,
+        owner: myId,
+        stroke: stroke,
+        at: Date.now()
+      }, true);
+    }
+
+    function publishStrokeDeletion(id, seq) {
+      if (sessionKicked || !state || !client || !client.connected || !id) return;
+      K.publish(client, K.topic(room, 'stroke/' + id), {
+        round: state.round,
+        seq: Number(seq) || Number(state.canvasSeq) || 0,
+        owner: myId,
+        id: id,
+        deleted: true,
+        at: Date.now()
+      }, true);
+    }
+
+    function applyStrokeEvent(data) {
+      if (!state || !data) return false;
+      if (data.round && Number(data.round) !== Number(state.round)) return false;
+      var seq = Number(data.seq) || 0;
+      var id = String(data.id || (data.stroke && data.stroke.id) || '');
+      if (!id) return false;
+      var currentSeq = Number(state.canvasSeq) || 0;
+
+      if (data.deleted) {
+        var before = state.strokes.length;
+        state.strokes = state.strokes.filter(function (item) { return item.id !== id; });
+        Object.keys(remoteDrafts).forEach(function (owner) {
+          if (remoteDrafts[owner] && remoteDrafts[owner].id === id) delete remoteDrafts[owner];
+        });
+        if (pendingStrokes[id]) delete pendingStrokes[id];
+        state.canvasSeq = Math.max(currentSeq, seq);
+        if (state.strokes.length !== before) scheduleBaseRedraw();
+        return true;
+      }
+
+      if (!data.stroke || data.stroke.id !== id) return false;
+      if (currentSeq > seq) return false;
+      if (state.strokes.some(function (item) { return item.id === id; })) {
+        state.canvasSeq = Math.max(currentSeq, seq);
+        return false;
+      }
+      var normalized = normalizeStroke(Object.assign({}, data.stroke));
+      if (!normalized) return false;
+      state.strokes.push(normalized);
+      state.canvasSeq = Math.max(currentSeq, seq);
+      Object.keys(remoteDrafts).forEach(function (owner) {
+        if (remoteDrafts[owner] && remoteDrafts[owner].id === id) delete remoteDrafts[owner];
+      });
+      if (pendingStrokes[id]) delete pendingStrokes[id];
+      scheduleBaseRedraw();
+      return true;
+    }
+
+    function applyRemoteStroke(stroke) {
+      return applyStrokeEvent({ stroke: stroke, seq: Number(state && state.canvasSeq) || 0 });
     }
   
     function systemMessage(text) {
@@ -286,6 +387,10 @@
   
     function rotateDrawer(reason, nextDrawerId) {
       if (!state) return;
+      if (localDraft && isDrawer()) {
+        commitStroke(localDraft);
+        localDraft = null;
+      }
       var players = presentPlayers();
       var ids = state.queue.filter(function (id) {
         return players.some(function (p) { return p.id === id; }) && !isIdBanned(id) && !isFingerprintBanned(presence[id] && presence[id].fingerprint);
@@ -311,7 +416,11 @@
       Object.keys(rasterImages).forEach(function (id) { delete rasterImages[id]; });
       Object.keys(rasterBgCache).forEach(function (id) { delete rasterBgCache[id]; });
       rasterBgCacheKeys.length = 0;
+      Object.keys(pendingStrokes).forEach(function (id) { delete pendingStrokes[id]; });
+      var clearSeq = (Number(state.canvasSeq) || 0) + 1;
+      state.strokes.forEach(function (stroke) { publishStrokeDeletion(stroke.id, clearSeq); });
       state.strokes = [];
+      state.canvasSeq = 0;
       state.hitInfo = null;
       state.reveal = null;
       state.pausedUntil = 0;
@@ -322,7 +431,7 @@
       drawing = false;
       localDraft = null;
       remoteDrafts = {};
-      publishDraft(null);
+      publishDraft(null, true);
       scheduleBaseRedraw();
       scheduleDrafts();
       var next = players.filter(function (p) { return p.id === state.drawer; })[0];
@@ -382,6 +491,10 @@
 
     function beginReveal(reason) {
       if (!state || state.reveal) return false;
+      if (localDraft && isDrawer()) {
+        commitStroke(localDraft);
+        localDraft = null;
+      }
       var currentWord = word();
       var reveal = {
         id: K.uid(),
@@ -397,7 +510,7 @@
       drawing = false;
       localDraft = null;
       remoteDrafts = {};
-      publishDraft(null);
+      publishDraft(null, true);
       systemMessage('Загаданное слово: ' + currentWord + '.');
       publishState();
       scheduleRevealResolution(reveal);
@@ -449,7 +562,7 @@
       drawing = false;
       localDraft = null;
       remoteDrafts = {};
-      publishDraft(null);
+      publishDraft(null, true);
       systemMessage('Загаданное слово: ' + endedWord + '.');
       publishState();
       rotateDrawer(reason);
@@ -492,11 +605,16 @@
     G.isHitPaused = isHitPaused;
     G.normalizeState = normalizeState;
     G.mergeState = mergeState;
+    G.normalizeStroke = migrateStroke;
     G.presentPlayers = presentPlayers;
     G.isDrawer = isDrawer;
     G.publishState = publishState;
     G.publishPresence = publishPresence;
     G.publishDraft = publishDraft;
+    G.publishStroke = publishStroke;
+    G.publishStrokeDeletion = publishStrokeDeletion;
+    G.applyStrokeEvent = applyStrokeEvent;
+    G.applyRemoteStroke = applyRemoteStroke;
     G.systemMessage = systemMessage;
     G.rotateDrawer = rotateDrawer;
     G.checkTimeout = checkTimeout;

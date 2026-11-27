@@ -136,6 +136,9 @@
       if (!state || !isDrawer() || isHitPaused() || state.reveal || state.lastWord) return;
       for (var i = state.strokes.length - 1; i >= 0; i--) {
         if (state.strokes[i].owner === myId) {
+          var id = state.strokes[i].id;
+          state.canvasSeq = (Number(state.canvasSeq) || 0) + 1;
+          publishStrokeDeletion(id, state.canvasSeq);
           state.strokes.splice(i, 1);
           publishState();
           scheduleBaseRedraw();
@@ -148,10 +151,12 @@
   
     el.clear.addEventListener('click', function () {
       if (!state || !isDrawer()) return;
+      state.canvasSeq = (Number(state.canvasSeq) || 0) + 1;
+      state.strokes.forEach(function (stroke) { publishStrokeDeletion(stroke.id, state.canvasSeq); });
       state.strokes = [];
       localDraft = null;
       remoteDrafts = {};
-      publishDraft(null);
+      publishDraft(null, true);
       publishState();
       scheduleBaseRedraw();
       scheduleDrafts();
