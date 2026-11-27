@@ -100,7 +100,7 @@
         });
         banned = isBannedMe();
   
-        if (!banned && state.queue.indexOf(myId) < 0) {
+        if (!banned && leavingRoom !== myId && state.queue.indexOf(myId) < 0) {
           state.queue.push(myId);
           publishState();
         }

@@ -177,13 +177,18 @@
     }
   
     function renderReveal() {
-      var reveal = state && state.reveal;
+      var reveal = state && (state.reveal || state.lastWord);
       if (!el.wordReveal || !reveal || Number(reveal.until) <= Date.now()) {
         if (el.wordReveal) el.wordReveal.hidden = true;
         return;
       }
       if (el.revealReason) el.revealReason.textContent = reveal.reason || 'Раунд завершён';
       if (el.revealWord) el.revealWord.textContent = reveal.word || word();
+      if (el.revealNote) {
+        el.revealNote.textContent = state && state.reveal
+          ? 'Следующий раунд скоро'
+          : 'Новый раунд уже начался';
+      }
       el.wordReveal.hidden = false;
     }
 

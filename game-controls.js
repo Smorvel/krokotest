@@ -13,7 +13,7 @@
       el.sizeCaption.textContent = tool.size + 'px';
       el.alphaCaption.textContent = tool.alpha + '%';
       el.sizeKnob.title = 'Размер: ' + tool.size + ' пикселей. Тяните вверх или вниз, клик — палитра цвета.';
-      el.alphaKnob.title = 'Прозрачность: ' + tool.alpha + '%. Тяните вверх или вниз.';
+      el.alphaKnob.title = 'Прозрачность: ' + tool.alpha + '%. Тяните вверх или вниз, клик — 100%.';
     }
   
     function setKnobValue(kind, value) {
@@ -59,7 +59,13 @@
       knobDrag = null;
       drag.button.classList.remove('dragging');
       K.setProfile(profile);
-      if (!drag.moved && drag.kind === 'size') openPalettePopover(drag.button, 'ink');
+      if (!drag.moved) {
+        if (drag.kind === 'size') openPalettePopover(drag.button, 'ink');
+        else if (drag.kind === 'alpha') {
+          setKnobValue('alpha', 100);
+          K.setProfile(profile);
+        }
+      }
     });
   
     el.sizeKnob.addEventListener('pointerdown', function (event) { beginKnobDrag(event, 'size'); });
@@ -137,11 +143,17 @@
       scheduleDrafts();
     });
   
+    if (el.save) el.save.addEventListener('click', function () { saveCanvasPng(); });
+
     document.addEventListener('keydown', function (event) {
       if (sessionKicked) return;
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+      var key = String(event.key || '').toLowerCase();
+      if ((event.ctrlKey || event.metaKey) && key === 'z') {
         event.preventDefault();
         el.undo.click();
+      } else if ((event.ctrlKey || event.metaKey) && key === 's') {
+        event.preventDefault();
+        saveCanvasPng();
       }
     });
     G.renderKnobs = renderKnobs;

@@ -24,6 +24,7 @@
   G.STROKE_KEEP_RECENT = 60;
   G.STROKE_BYTES_LIMIT = 260000;
   G.sessionKicked = false;
+  G.leavingRoom = null;
   G.syncDone = false;
 
   G.PRESET_COLORS = [
@@ -104,6 +105,7 @@
     smoothBtn: document.getElementById('smoothBtn'),
     undo: document.getElementById('undoBtn'),
     clear: document.getElementById('clearBtn'),
+    save: document.getElementById('saveBtn'),
     wordSourceLabel: document.getElementById('wordSourceLabel'),
     word: document.getElementById('wordText'),
     drawer: document.getElementById('drawerName'),
@@ -115,9 +117,9 @@
     wordReveal: document.getElementById('wordReveal'),
     revealReason: document.getElementById('revealReason'),
     revealWord: document.getElementById('revealWord'),
+    revealNote: document.getElementById('revealNote'),
     inkBlobs: document.getElementById('inkBlobs'),
     bgSquare: document.getElementById('bgSquare'),
-    colorEditorBtn: document.getElementById('colorEditorBtn'),
     palettePopover: document.getElementById('palettePopover'),
     paletteTitle: document.getElementById('paletteTitle'),
     paletteCurrent: document.getElementById('paletteCurrent'),
@@ -132,7 +134,6 @@
     sync: document.getElementById('syncText'),
     panelTabs: document.getElementById('panelTabs'),
     leaveRoomBtn: document.getElementById('leaveRoomBtn'),
-    openSettingsBtn: document.getElementById('openSettingsBtn'),
     players: document.getElementById('playersList'),
     playersCount: document.getElementById('playersCount'),
     banList: document.getElementById('banList'),

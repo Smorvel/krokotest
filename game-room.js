@@ -31,7 +31,48 @@
     function isHitPaused() {
       return !!(state && state.pausedUntil && Date.now() < state.pausedUntil);
     }
-  
+
+    function normalizeReveal(raw) {
+      if (!raw || typeof raw !== 'object') return null;
+      var value = {
+        id: String(raw.id || ''),
+        word: String(raw.word || ''),
+        round: Number(raw.round) || 0,
+        until: Number(raw.until) || 0,
+        reason: String(raw.reason || '')
+      };
+      if (!value.id || !value.word || !value.until) return null;
+      if (!value.until || value.until <= Date.now()) return null;
+      return value;
+    }
+
+    function migrateStroke(stroke) {
+      if (!stroke || typeof stroke !== 'object') return null;
+      var sw = Number(stroke.cw) || 1000;
+      var sh = Number(stroke.ch) || 750;
+      if (sw === canvas.width && sh === canvas.height) {
+        stroke.cw = sw;
+        stroke.ch = sh;
+        return stroke;
+      }
+      var scale = Math.min(canvas.width / sw, canvas.height / sh);
+      var dx = (canvas.width - sw * scale) / 2;
+      var dy = (canvas.height - sh * scale) / 2;
+      if (Array.isArray(stroke.points)) {
+        stroke.points = stroke.points.map(function (point) {
+          if (!point || typeof point !== 'object') return point;
+          return Object.assign({}, point, {
+            x: (Number(point.x) || 0) * scale + dx,
+            y: (Number(point.y) || 0) * scale + dy
+          });
+        });
+      }
+      stroke.cw = canvas.width;
+      stroke.ch = canvas.height;
+      stroke.migratedFrom = sw + 'x' + sh;
+      return stroke;
+    }
+
     function normalizeState(data) {
       var s = data || {};
       var dictionary = s.dictionary && Array.isArray(s.dictionary.words) && s.dictionary.words.length
@@ -46,7 +87,7 @@
       s.strokes = Array.isArray(s.strokes) ? s.strokes.filter(function (stroke) {
         return stroke && typeof stroke === 'object' &&
           ((stroke.tool === 'raster' && typeof stroke.image === 'string') || Array.isArray(stroke.points));
-      }) : [];
+      }).map(migrateStroke).filter(Boolean) : [];
       s.messages = Array.isArray(s.messages) ? s.messages.slice(-50) : [];
       s.scores = s.scores && typeof s.scores === 'object' ? s.scores : {};
       s.reactions = s.reactions && typeof s.reactions === 'object'
@@ -88,16 +129,8 @@
       s.drawer = typeof s.drawer === 'string' ? s.drawer : '';
       s.pausedUntil = Number(s.pausedUntil) || 0;
       s.hitInfo = s.hitInfo && typeof s.hitInfo === 'object' ? s.hitInfo : null;
-      s.reveal = s.reveal && typeof s.reveal === 'object'
-        ? {
-            id: String(s.reveal.id || ''),
-            word: String(s.reveal.word || ''),
-            round: Number(s.reveal.round) || 0,
-            until: Number(s.reveal.until) || 0,
-            reason: String(s.reveal.reason || '')
-          }
-        : null;
-      if (s.reveal && (!s.reveal.id || !s.reveal.word || s.reveal.until <= Date.now())) s.reveal = null;
+      s.reveal = normalizeReveal(s.reveal);
+      s.lastWord = normalizeReveal(s.lastWord);
       s.hintSent = !!s.hintSent;
       s.waitingForPlayers = !!s.waitingForPlayers;
       s.expiredAt = Number(s.expiredAt) || 0;
@@ -109,7 +142,8 @@
     function presentPlayers() {
       var now = Date.now();
       var list = Object.keys(presence).map(function (id) { return presence[id]; }).filter(function (p) {
-        return p && p.online !== false && now - (Number(p.ts) || 0) < 60000 && !isPlayerBanned(p);
+        return p && p.id !== leavingRoom && p.online !== false &&
+          now - (Number(p.ts) || 0) < 60000 && !isPlayerBanned(p);
       });
       if (!isBannedMe() && !list.some(function (p) { return p.id === myId; })) {
         list.push({
@@ -324,10 +358,37 @@
       beginReveal(reason);
     }
 
+    function endRoundOnLeave() {
+      if (!state || sessionKicked || !isDrawer()) return false;
+      leavingRoom = myId;
+      var endedWord = word();
+      var reason = 'Художник вышел.';
+      state.lastWord = {
+        id: K.uid(),
+        word: endedWord,
+        round: state.round,
+        until: Date.now() + REVEAL_MS,
+        reason: reason
+      };
+      state.reveal = null;
+      state.hitInfo = null;
+      state.pausedUntil = 0;
+      drawing = false;
+      localDraft = null;
+      remoteDrafts = {};
+      publishDraft(null);
+      systemMessage('Загаданное слово: ' + endedWord + '.');
+      publishState();
+      rotateDrawer(reason);
+      publishState();
+      renderAll();
+      return true;
+    }
+
     function ensureDrawer() {
       if (!state) return;
       if (presenceReadyAt && Date.now() < presenceReadyAt) return;
-      if (state.reveal) return;
+      if (state.reveal || state.lastWord) return;
       var players = presentPlayers();
       var ids = players.map(function (p) { return p.id; });
       if (ids.indexOf(state.drawer) >= 0) return;
@@ -356,6 +417,7 @@
     G.finishReveal = finishReveal;
     G.scheduleRevealResolution = scheduleRevealResolution;
     G.scheduleHitResolution = scheduleHitResolution;
+    G.endRoundOnLeave = endRoundOnLeave;
     G.ensureDrawer = ensureDrawer;
   }
 })(window.KROKO_GAME);

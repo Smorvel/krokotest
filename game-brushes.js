@@ -402,11 +402,14 @@
     function drawRasterStroke(context, stroke) {
       var img = stroke && rasterImages[stroke.id];
       if (!img || !img.complete || !img.naturalWidth) return false;
-      if (stroke.w && stroke.h && (stroke.w !== canvas.width || stroke.h !== canvas.height)) {
-        context.drawImage(img, 0, 0, stroke.w, stroke.h, 0, 0, canvas.width, canvas.height);
-      } else {
-        context.drawImage(img, 0, 0, canvas.width, canvas.height);
-      }
+      var sw = Number(stroke.w) || img.naturalWidth;
+      var sh = Number(stroke.h) || img.naturalHeight;
+      var scale = Math.min(canvas.width / sw, canvas.height / sh);
+      var dw = sw * scale;
+      var dh = sh * scale;
+      var dx = (canvas.width - dw) / 2;
+      var dy = (canvas.height - dh) / 2;
+      context.drawImage(img, dx, dy, dw, dh);
       return true;
     }
 
@@ -458,6 +461,8 @@
         image: image,
         w: archive.width,
         h: archive.height,
+        cw: canvas.width,
+        ch: canvas.height,
         bg: (state && state.bg) || tool.bg || '#ffffff',
         points: [],
         at: Date.now()
@@ -471,6 +476,8 @@
 
     function commitStroke(stroke) {
       if (!state || !stroke) return;
+      stroke.cw = canvas.width;
+      stroke.ch = canvas.height;
       state.strokes.push(stroke);
       compactStrokes();
       publishState();
@@ -531,6 +538,18 @@
       if (draftFrame) return;
       draftFrame = requestAnimationFrame(redrawDrafts);
     }
+
+    function saveCanvasPng() {
+      redrawBase();
+      var stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      var safeRoom = String(room || 'drawing').replace(/[^a-z0-9_-]+/gi, '-');
+      var link = document.createElement('a');
+      link.download = 'krokotest-' + safeRoom + '-' + stamp + '.png';
+      link.href = canvas.toDataURL('image/png');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
   
     function cursorFactor() {
       if (tool.current === 'soft') return 2.1;
@@ -581,6 +600,7 @@
     G.scheduleBaseRedraw = scheduleBaseRedraw;
     G.redrawDrafts = redrawDrafts;
     G.scheduleDrafts = scheduleDrafts;
+    G.saveCanvasPng = saveCanvasPng;
     G.cursorFactor = cursorFactor;
     G.updateCursor = updateCursor;
     G.refreshCursor = refreshCursor;

@@ -176,14 +176,12 @@
     });
 
     el.bgSquare.addEventListener('click', function () { openPalettePopover(el.bgSquare, 'bg'); });
-    el.colorEditorBtn.addEventListener('click', function () { openPalettePopover(el.colorEditorBtn, 'ink'); });
 
     document.addEventListener('pointerdown', function (event) {
       if (el.palettePopover.hidden) return;
       if (el.palettePopover.contains(event.target)) return;
       if (event.target === el.sizeKnob || el.sizeKnob.contains(event.target)) return;
       if (event.target === el.bgSquare || el.bgSquare.contains(event.target)) return;
-      if (event.target === el.colorEditorBtn || el.colorEditorBtn.contains(event.target)) return;
       closePalettePopover();
     });
 

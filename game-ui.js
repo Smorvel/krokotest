@@ -165,9 +165,22 @@
       var button = event.target.closest('.panel-tab');
       if (button) switchPanel(button.dataset.tab);
     });
-    el.openSettingsBtn.addEventListener('click', function () { switchPanel('settings'); });
-    el.leaveRoomBtn.addEventListener('click', function () {
+    function leaveRoom() {
+      if (sessionKicked) {
+        location.href = 'index.html';
+        return;
+      }
+      endRoundOnLeave();
       publishPresence(false);
+      sessionKicked = true;
+      setTimeout(function () { location.href = 'index.html'; }, 150);
+    }
+
+    document.querySelectorAll('.js-leave-room').forEach(function (link) {
+      link.addEventListener('click', function (event) {
+        event.preventDefault();
+        leaveRoom();
+      });
     });
   
     function selectInlineDict(id) {
