@@ -43,7 +43,10 @@
       s.startedAt = Number(s.startedAt) || Date.now();
       var roundMs = Number(s.roundMs);
       s.roundMs = isFinite(roundMs) && roundMs >= 0 && roundMs <= MAX_ROUND_MS ? roundMs : DEFAULT_ROUND_MS;
-      s.strokes = Array.isArray(s.strokes) ? s.strokes.slice(-80) : [];
+      s.strokes = Array.isArray(s.strokes) ? s.strokes.filter(function (stroke) {
+        return stroke && typeof stroke === 'object' &&
+          ((stroke.tool === 'raster' && typeof stroke.image === 'string') || Array.isArray(stroke.points));
+      }) : [];
       s.messages = Array.isArray(s.messages) ? s.messages.slice(-50) : [];
       s.scores = s.scores && typeof s.scores === 'object' ? s.scores : {};
       s.reactions = s.reactions && typeof s.reactions === 'object'
@@ -85,6 +88,16 @@
       s.drawer = typeof s.drawer === 'string' ? s.drawer : '';
       s.pausedUntil = Number(s.pausedUntil) || 0;
       s.hitInfo = s.hitInfo && typeof s.hitInfo === 'object' ? s.hitInfo : null;
+      s.reveal = s.reveal && typeof s.reveal === 'object'
+        ? {
+            id: String(s.reveal.id || ''),
+            word: String(s.reveal.word || ''),
+            round: Number(s.reveal.round) || 0,
+            until: Number(s.reveal.until) || 0,
+            reason: String(s.reveal.reason || '')
+          }
+        : null;
+      if (s.reveal && (!s.reveal.id || !s.reveal.word || s.reveal.until <= Date.now())) s.reveal = null;
       s.hintSent = !!s.hintSent;
       s.waitingForPlayers = !!s.waitingForPlayers;
       s.expiredAt = Number(s.expiredAt) || 0;
@@ -173,8 +186,10 @@
       chooseNextWord();
       state.round += 1;
       state.startedAt = Date.now();
+      Object.keys(rasterImages).forEach(function (id) { delete rasterImages[id]; });
       state.strokes = [];
       state.hitInfo = null;
+      state.reveal = null;
       state.pausedUntil = 0;
       state.waitingForPlayers = false;
       state.expiredAt = 0;
@@ -191,7 +206,7 @@
     }
   
     function checkTimeout() {
-      if (!state || isHitPaused() || state.roundMs === 0) return;
+      if (!state || state.reveal || isHitPaused() || state.roundMs === 0) return;
       var expired = Date.now() - state.startedAt >= state.roundMs;
       if (!expired) return;
       var guessers = presentPlayers().filter(function (p) { return p.id !== state.drawer; });
@@ -223,12 +238,11 @@
   
       if (handledStart === state.startedAt) return;
       handledStart = state.startedAt;
-      rotateDrawer('Время вышло!');
-      publishState();
+      beginReveal('Время вышло!');
     }
   
     function issueHintIfNeeded() {
-      if (!state || state.hintsDisabled || state.roundMs === 0 || state.hintSent || isHitPaused()) return;
+      if (!state || state.reveal || state.hintsDisabled || state.roundMs === 0 || state.hintSent || isHitPaused()) return;
       if (!isDrawer()) return;
       if (Date.now() - state.startedAt < state.roundMs * 0.9) return;
       state.hintSent = true;
@@ -250,37 +264,75 @@
       }, HIT_PAUSE_MS);
     }
   
+    function isRevealAuthority() {
+      if (!state) return false;
+      var players = presentPlayers();
+      if (!players.length) return false;
+      var drawerPresent = players.some(function (p) { return p.id === state.drawer; });
+      if (drawerPresent) return isDrawer();
+      if (isCreator()) return true;
+      return players[0].id === myId;
+    }
+
+    function beginReveal(reason) {
+      if (!state || state.reveal) return false;
+      var currentWord = word();
+      var reveal = {
+        id: K.uid(),
+        word: currentWord,
+        round: state.round,
+        until: Date.now() + REVEAL_MS,
+        reason: reason || 'Раунд завершён'
+      };
+      state.reveal = reveal;
+      state.hitInfo = null;
+      state.pausedUntil = 0;
+      drawing = false;
+      localDraft = null;
+      remoteDrafts = {};
+      publishDraft(null);
+      systemMessage('Загаданное слово: ' + currentWord + '.');
+      publishState();
+      scheduleRevealResolution(reveal);
+      renderAll();
+      return true;
+    }
+
+    function finishReveal(reveal) {
+      if (!state || !state.reveal || state.reveal.id !== reveal.id) return;
+      if (!isRevealAuthority()) return;
+      rotateDrawer(reveal.reason || 'Раунд завершён.');
+      publishState();
+      renderAll();
+    }
+
+    function scheduleRevealResolution(reveal) {
+      if (!reveal || !reveal.id || handledRevealId === reveal.id) return;
+      handledRevealId = reveal.id;
+      if (typeof renderReveal === 'function') renderReveal();
+      setTimeout(function () {
+        if (!state || !state.reveal || state.reveal.id !== reveal.id) return;
+        finishReveal(reveal);
+      }, Math.max(0, reveal.until - Date.now()) + 150);
+    }
+
     function scheduleHitResolution(info) {
       if (!info || !info.id || handledHitId === info.id) return;
       handledHitId = info.id;
       showHitAnimation(info);
-      setTimeout(function () {
-        if (!state || !state.hitInfo || state.hitInfo.id !== info.id) return;
-        var drawerPresent = presentPlayers().some(function (p) { return p.id === state.drawer; });
-        if (!isDrawer() && !(isCreator() && !drawerPresent)) return;
-        rotateDrawer(state.hitInfo.reason || 'Все слова угаданы!');
-        publishState();
-      }, HIT_PAUSE_MS);
+      var reason = (state && state.hitInfo && state.hitInfo.reason) || info.reason || 'Все слова угаданы!';
+      beginReveal(reason);
     }
-  
+
     function ensureDrawer() {
       if (!state) return;
       if (presenceReadyAt && Date.now() < presenceReadyAt) return;
+      if (state.reveal) return;
       var players = presentPlayers();
       var ids = players.map(function (p) { return p.id; });
       if (ids.indexOf(state.drawer) >= 0) return;
       state.queue = ids;
-      state.drawer = ids[0] || myId;
-      state.startedAt = Date.now();
-      state.strokes = [];
-      state.guessedWords = [];
-      state.hintSent = false;
-      remoteDrafts = {};
-      localDraft = null;
-      handledStart = 0;
-      var next = players.filter(function (p) { return p.id === state.drawer; })[0];
-      systemMessage('Художник вышел. Теперь рисует ' + (next ? next.name : profile.name) + '.');
-      publishState();
+      beginReveal('Художник вышел.');
     }
     G.isCreator = isCreator;
     G.isIdBanned = isIdBanned;
@@ -299,6 +351,10 @@
     G.checkTimeout = checkTimeout;
     G.issueHintIfNeeded = issueHintIfNeeded;
     G.showHitAnimation = showHitAnimation;
+    G.isRevealAuthority = isRevealAuthority;
+    G.beginReveal = beginReveal;
+    G.finishReveal = finishReveal;
+    G.scheduleRevealResolution = scheduleRevealResolution;
     G.scheduleHitResolution = scheduleHitResolution;
     G.ensureDrawer = ensureDrawer;
   }

@@ -388,6 +388,95 @@
       }
     }
 
+    function loadRasterImages(strokes) {
+      if (!Array.isArray(strokes)) return;
+      strokes.forEach(function (stroke) {
+        if (!stroke || stroke.tool !== 'raster' || !stroke.image || rasterImages[stroke.id]) return;
+        var img = new Image();
+        img.onload = function () { scheduleBaseRedraw(); };
+        img.src = stroke.image;
+        rasterImages[stroke.id] = img;
+      });
+    }
+
+    function drawRasterStroke(context, stroke) {
+      var img = stroke && rasterImages[stroke.id];
+      if (!img || !img.complete || !img.naturalWidth) return false;
+      if (stroke.w && stroke.h && (stroke.w !== canvas.width || stroke.h !== canvas.height)) {
+        context.drawImage(img, 0, 0, stroke.w, stroke.h, 0, 0, canvas.width, canvas.height);
+      } else {
+        context.drawImage(img, 0, 0, canvas.width, canvas.height);
+      }
+      return true;
+    }
+
+    function drawArchivedStroke(context, stroke) {
+      if (!stroke) return;
+      if (stroke.tool === 'raster') {
+        drawRasterStroke(context, stroke);
+        return;
+      }
+      if (stroke.tool === 'fill' && stroke.points && stroke.points.length) {
+        floodFill(context, stroke.points[0], stroke.color, stroke.alpha);
+        return;
+      }
+      paintStroke(context, stroke);
+    }
+
+    function compactStrokes() {
+      if (!state || !isDrawer() || !Array.isArray(state.strokes) || state.strokes.length < 2) return;
+      var tooMany = state.strokes.length > STROKE_SOFT_LIMIT;
+      var tooBig = false;
+      if (!tooMany && STROKE_BYTES_LIMIT > 0) {
+        try { tooBig = JSON.stringify(state.strokes).length > STROKE_BYTES_LIMIT; } catch (err) { /* ignore */ }
+      }
+      if (!tooMany && !tooBig) return;
+
+      var keep = Math.min(STROKE_KEEP_RECENT, Math.max(0, state.strokes.length - 1));
+      var cut = state.strokes.length - keep;
+      if (cut < 2) return;
+      var old = state.strokes.slice(0, cut);
+      var notReady = old.some(function (stroke) {
+        return stroke && stroke.tool === 'raster' && stroke.image &&
+          (!rasterImages[stroke.id] || !rasterImages[stroke.id].complete);
+      });
+      if (notReady) return;
+
+      var archive = document.createElement('canvas');
+      archive.width = canvas.width;
+      archive.height = canvas.height;
+      var archiveCtx = archive.getContext('2d', { willReadFrequently: true });
+      archiveCtx.fillStyle = (state && state.bg) || tool.bg || '#ffffff';
+      archiveCtx.fillRect(0, 0, archive.width, archive.height);
+      old.forEach(function (stroke) { drawArchivedStroke(archiveCtx, stroke); });
+
+      var image = archive.toDataURL('image/png');
+      var raster = {
+        id: K.uid(),
+        owner: '',
+        tool: 'raster',
+        image: image,
+        w: archive.width,
+        h: archive.height,
+        bg: (state && state.bg) || tool.bg || '#ffffff',
+        points: [],
+        at: Date.now()
+      };
+      var img = new Image();
+      img.onload = function () { scheduleBaseRedraw(); };
+      img.src = image;
+      rasterImages[raster.id] = img;
+      state.strokes = [raster].concat(state.strokes.slice(cut));
+    }
+
+    function commitStroke(stroke) {
+      if (!state || !stroke) return;
+      state.strokes.push(stroke);
+      compactStrokes();
+      publishState();
+      scheduleBaseRedraw();
+    }
+
     function redrawBase() {
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -396,8 +485,11 @@
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       if (state) {
         var prefix = '';
+        loadRasterImages(state.strokes);
         state.strokes.forEach(function (stroke) {
-          if (stroke.tool === 'fill' && stroke.points && stroke.points.length) {
+          if (stroke.tool === 'raster' && stroke.image) {
+            drawRasterStroke(ctx, stroke);
+          } else if (stroke.tool === 'fill' && stroke.points && stroke.points.length) {
             var key = stroke.id + '|' + prefix + '|' + (state.bg || '') + '|' + stroke.color + '|' + stroke.alpha;
             var cached = fillCache[key];
             if (cached && cached.w === canvas.width && cached.h === canvas.height) {
@@ -481,6 +573,10 @@
     G.stampAlong = stampAlong;
     G.cachedStamp = cachedStamp;
     G.paintStroke = paintStroke;
+    G.loadRasterImages = loadRasterImages;
+    G.drawRasterStroke = drawRasterStroke;
+    G.compactStrokes = compactStrokes;
+    G.commitStroke = commitStroke;
     G.redrawBase = redrawBase;
     G.scheduleBaseRedraw = scheduleBaseRedraw;
     G.redrawDrafts = redrawDrafts;

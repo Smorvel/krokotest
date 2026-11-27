@@ -25,6 +25,7 @@
       if (state) {
         issueHintIfNeeded();
         renderWord();
+        renderReveal();
       }
     }, 1000);
 

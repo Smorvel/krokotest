@@ -124,7 +124,8 @@
     }
   
     function renderTools() {
-      var canDraw = isDrawer() && !isBannedMe();
+      var revealing = !!(state && state.reveal);
+      var canDraw = isDrawer() && !isBannedMe() && !revealing;
       renderToolGrid();
       el.toolRail.classList.toggle('disabled', !canDraw);
       el.toolGrid.querySelectorAll('button').forEach(function (button) {
@@ -146,13 +147,14 @@
       renderPalettes();
   
       if (isBannedMe()) el.status.textContent = 'Вы заблокированы в этой комнате';
+      else if (revealing) el.status.textContent = 'Раунд завершён. Следующий раунд скоро.';
       else if (canDraw) el.status.textContent = 'Вы рисуете слово. Остальные угадывают!';
       else el.status.textContent = 'Вы угадываете. Рисунок виден без затемнения!';
       el.sync.textContent = client && client.connected ? 'онлайн-синхронизация' : 'переподключение...';
-      el.chatInput.disabled = isDrawer() || isBannedMe() || isHitPaused();
-      el.chatInput.placeholder = isDrawer()
-        ? 'Вы рисуете — чат недоступен'
-        : (isHitPaused() ? 'Пауза — смотрите анимацию...' : 'Напиши слово...');
+      el.chatInput.disabled = isDrawer() || isBannedMe() || isHitPaused() || revealing;
+      el.chatInput.placeholder = revealing
+        ? 'Раунд завершён — смотрите слово'
+        : (isDrawer() ? 'Вы рисуете — чат недоступен' : (isHitPaused() ? 'Пауза — смотрите анимацию...' : 'Напиши слово...'));
   
       el.roomBadge.hidden = !isCreator();
       el.settingsRoomName.textContent = (meta && meta.name) || room;
@@ -174,6 +176,17 @@
       renderBanList();
     }
   
+    function renderReveal() {
+      var reveal = state && state.reveal;
+      if (!el.wordReveal || !reveal || Number(reveal.until) <= Date.now()) {
+        if (el.wordReveal) el.wordReveal.hidden = true;
+        return;
+      }
+      if (el.revealReason) el.revealReason.textContent = reveal.reason || 'Раунд завершён';
+      if (el.revealWord) el.revealWord.textContent = reveal.word || word();
+      el.wordReveal.hidden = false;
+    }
+
     function renderTimer() {
       if (!state) return;
       var pausedNow = isHitPaused();
@@ -192,6 +205,7 @@
       renderMessages();
       renderWord();
       renderTools();
+      renderReveal();
       renderTimer();
       scheduleBaseRedraw();
       scheduleDrafts();
@@ -211,6 +225,7 @@
     G.renderDictChecks = renderDictChecks;
     G.renderInlineDicts = renderInlineDicts;
     G.renderTools = renderTools;
+    G.renderReveal = renderReveal;
     G.renderTimer = renderTimer;
     G.renderAll = renderAll;
   }

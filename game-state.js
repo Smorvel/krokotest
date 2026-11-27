@@ -17,7 +17,12 @@
   G.DEFAULT_ROUND_MS = 5 * 60 * 1000;
   G.MAX_ROUND_MS = 60 * 60 * 1000;
   G.HIT_PAUSE_MS = 2400;
+  G.REVEAL_MS = 3600;
   G.HISTORY_LIMIT = 30;
+  /* Drawing history is never discarded. Old strokes are rasterized instead. */
+  G.STROKE_SOFT_LIMIT = 160;
+  G.STROKE_KEEP_RECENT = 60;
+  G.STROKE_BYTES_LIMIT = 260000;
   G.sessionKicked = false;
   G.syncDone = false;
 
@@ -56,12 +61,14 @@
   G.editingInlineDict = null;
   G.handledHitId = null;
   G.hitTimer = null;
+  G.handledRevealId = null;
   G.wasHitPaused = false;
   G.previousTool = 'brush';
   G.draftFrame = null;
   G.baseFrame = null;
   G.fillCache = {};
   G.fillCacheKeys = [];
+  G.rasterImages = {};
   G.knobDrag = null;
   G.stampCache = {};
   G.smoothPoint = null;
@@ -105,6 +112,9 @@
     wrap: document.getElementById('canvasWrap'),
     cursor: document.getElementById('brushCursor'),
     hitToast: document.getElementById('hitToast'),
+    wordReveal: document.getElementById('wordReveal'),
+    revealReason: document.getElementById('revealReason'),
+    revealWord: document.getElementById('revealWord'),
     inkBlobs: document.getElementById('inkBlobs'),
     bgSquare: document.getElementById('bgSquare'),
     colorEditorBtn: document.getElementById('colorEditorBtn'),

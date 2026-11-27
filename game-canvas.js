@@ -35,10 +35,7 @@
           bg: tool.bg,
           points: [pointFromEvent(event)]
         };
-        state.strokes.push(fillStroke);
-        state.strokes = state.strokes.slice(-80);
-        publishState();
-        scheduleBaseRedraw();
+        commitStroke(fillStroke);
         return;
       }
   
@@ -97,12 +94,9 @@
           }
         }
         smoothPoint = null;
-        state.strokes.push(localDraft);
-        state.strokes = state.strokes.slice(-80);
+        commitStroke(localDraft);
         localDraft = null;
-        publishState();
         publishDraft(null);
-        scheduleBaseRedraw();
         scheduleDrafts();
       }
       if (event) updateCursor(event);

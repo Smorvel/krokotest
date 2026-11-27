@@ -111,6 +111,7 @@
         }
         applyMeta();
         renderAll();
+        if (state.reveal) scheduleRevealResolution(state.reveal);
         if (state.hitInfo) scheduleHitResolution(state.hitInfo);
         ensureDrawer();
         checkTimeout();
