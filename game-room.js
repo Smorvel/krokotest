@@ -85,11 +85,10 @@
       s.startedAt = Number(s.startedAt) || Date.now();
       var roundMs = Number(s.roundMs);
       s.roundMs = isFinite(roundMs) && roundMs >= 0 && roundMs <= MAX_ROUND_MS ? roundMs : DEFAULT_ROUND_MS;
-      s.strokes = Array.isArray(s.strokes) ? s.strokes.filter(function (stroke) {
-        return stroke && typeof stroke === 'object' &&
-          ((stroke.tool === 'raster' && typeof stroke.image === 'string') || Array.isArray(stroke.points));
-      }).map(migrateStroke).filter(Boolean) : [];
-      s.canvasSeq = Number(s.canvasSeq) || 0;
+      /* Общее состояние никогда не несёт рисунок и его версию. Источник
+         холста — только canvas/<round> и stroke/<id>. */
+      s.strokes = [];
+      s.canvasSeq = 0;
       s.messages = Array.isArray(s.messages) ? s.messages.slice(-50) : [];
       s.scores = s.scores && typeof s.scores === 'object' ? s.scores : {};
       s.reactions = s.reactions && typeof s.reactions === 'object'
@@ -151,6 +150,21 @@
     function mergeState(incoming, previous) {
       var changed = false;
       if (!previous) return { state: incoming, changed: false };
+      /* Задержанная копия не может начать новый раунд, сменив художника без
+         подтверждённого ухода предыдущего. Вероятный случай — гость обновил
+         страницу и прислал старое состояние с новым номером раунда. */
+      if (Number(incoming.round) > Number(previous.round) && previous.drawer &&
+          incoming.drawer !== previous.drawer && incoming.updatedBy !== previous.drawer &&
+          !drawerConfirmedGone(previous.drawer)) {
+        incoming.round = previous.round;
+        incoming.wordIndex = previous.wordIndex;
+        incoming.startedAt = previous.startedAt;
+        incoming.drawer = previous.drawer;
+        incoming.updatedAt = previous.updatedAt;
+        incoming.reveal = null;
+        incoming.hitInfo = null;
+        changed = true;
+      }
       var sameRound = Number(incoming.round) === Number(previous.round) &&
         Number(incoming.wordIndex) === Number(previous.wordIndex);
 
@@ -188,30 +202,17 @@
       });
       incoming.scores = scores;
 
-      /* Рисунок задаёт только текущий художник. Чужая копия состояния не
-         может заменить свежий холст, даже если её номер версии больше. */
-      var incomingSeq = Number(incoming.canvasSeq) || 0;
-      var previousSeq = Number(previous.canvasSeq) || 0;
-      var incomingRound = Number(incoming.round) || 0;
-      var previousRoundNum = Number(previous.round) || 0;
-      var newerRound = incomingRound > previousRoundNum;
-      var olderRound = incomingRound < previousRoundNum;
-      var incomingStrokes = incoming.strokes || [];
-      var previousStrokes = previous.strokes || [];
-      if (olderRound) {
-        incoming.strokes = previousStrokes.slice();
-        incoming.canvasSeq = previousSeq;
-        changed = true;
-      } else if (newerRound) {
-        incoming.strokes = incomingStrokes.slice();
-        incoming.canvasSeq = incomingSeq;
-        changed = true;
+      /* Версия и штрихи живут только в canvas/<round> и stroke/<id>.
+         В пределах раунда копия state сохраняет локальный холст. Новый раунд
+         обнуляет его сразу, иначе старый снимок с высоким seq заблокирует
+         свежий пустой холст с seq=0. */
+      if (Number(incoming.round) === Number(previous.round)) {
+        incoming.strokes = (previous.strokes || []).slice();
+        incoming.canvasSeq = Number(previous.canvasSeq) || 0;
       } else {
-        /* Рисунок приходит только из canvas/<round> и stroke/<id>.
-           Общее состояние больше не заменяет уже полученный холст. */
-        incoming.strokes = previousStrokes.slice();
-        incoming.canvasSeq = previousSeq;
-        if (strokeIds(incoming.strokes).join(',') !== strokeIds(previousStrokes).join(',')) changed = true;
+        incoming.strokes = [];
+        incoming.canvasSeq = 0;
+        changed = true;
       }
 
       /* В пределах раунда ход меняет только сам художник. Отсутствие его
@@ -219,6 +220,15 @@
          именно так гость забирала рисование после обновления страницы. */
       if (sameRound && previous.drawer && incoming.drawer !== previous.drawer &&
           incoming.updatedBy !== previous.drawer) {
+        incoming.drawer = previous.drawer;
+        changed = true;
+      }
+      /* Новый раунд не может сменить художника без подтверждённого ухода
+         предыдущего: иначе задержанная копия забирает ход у живого игрока. */
+      if (!sameRound && Number(incoming.round) > Number(previous.round) &&
+          previous.drawer && incoming.drawer !== previous.drawer &&
+          incoming.updatedBy !== previous.drawer &&
+          !drawerConfirmedGone(previous.drawer)) {
         incoming.drawer = previous.drawer;
         changed = true;
       }
@@ -261,11 +271,7 @@
     }
 
     function presentPlayers() {
-      var now = Date.now();
-      var list = Object.keys(presence).map(function (id) { return presence[id]; }).filter(function (p) {
-        return p && p.id !== leavingRoom && p.online !== false &&
-          now - (Number(p.seenAt) || Number(p.ts) || 0) < 90000 && !isPlayerBanned(p);
-      });
+      var list = activePeers().slice();
       if (!isBannedMe() && !list.some(function (p) { return p.id === myId; })) {
         list.push({
           id: myId, name: profile.name, color: profile.color, avatar: profile.avatar, fingerprint: myFingerprint,
@@ -273,6 +279,23 @@
         });
       }
       return list.sort(function (a, b) { return (Number(a.joinedAt) || 0) - (Number(b.joinedAt) || 0); });
+    }
+
+    /* Живые собеседники отличаются от retained-призраков: обычный heartbeat
+       считается свежим 15 секунд, а удержанное сообщение — только если его
+       собственная метка времени ещё не устарела. */
+    function activePeers() {
+      var now = Date.now();
+      return Object.keys(presence).map(function (id) { return presence[id]; }).filter(function (p) {
+        if (!p || p.id === myId || p.id === leavingRoom || p.online === false || isPlayerBanned(p)) return false;
+        if (now - (Number(p.receivedAt) || Number(p.seenAt) || 0) >= 15000) return false;
+        if (p.retained && now - (Number(p.ts) || 0) > PRESENCE_TS_TTL_MS) return false;
+        return true;
+      });
+    }
+
+    function soloRoom() {
+      return activePeers().length === 0;
     }
   
     function isDrawer() {
@@ -415,7 +438,10 @@
 
     function applyStrokeEvent(data) {
       if (!state || !data) return false;
-      if (data.round && Number(data.round) !== Number(state.round)) return false;
+      if (!data.round || Number(data.round) !== Number(state.round)) return false;
+      /* Штрихи и удаления принимаются только от текущего художника. Это
+         главная защита от задержанного игрока, который рисует поверх нового. */
+      if (state.drawer && data.owner !== state.drawer) return false;
       var seq = Number(data.seq) || 0;
       var id = String(data.id || (data.stroke && data.stroke.id) || '');
       if (!id) return false;
@@ -460,10 +486,6 @@
       return true;
     }
 
-    function applyRemoteStroke(stroke) {
-      return applyStrokeEvent({ stroke: stroke, seq: Number(state && state.canvasSeq) || 0 });
-    }
-
     /* Полный упорядоченный снимок холста. Его публикует только художник,
        поэтому у всех игроков рано или поздно оказывается один и тот же набор
        штрихов, даже если отдельное событие штриха не дошло. */
@@ -472,7 +494,8 @@
       if (!force && !isDrawer()) return;
       var seq = Number(state.canvasSeq) || 0;
       canvasRound = Number(state.round);
-      canvasVersion = Math.max(Number(canvasVersion) || 0, seq);
+      canvasVersion = seq;
+      canvasOwner = myId;
       K.publish(client, K.topic(room, 'canvas/' + state.round), {
         round: state.round,
         seq: seq,
@@ -497,9 +520,23 @@
 
     function applyCanvasSnapshot(data) {
       if (!state || !data || !Array.isArray(data.strokes)) return false;
-      var round = Number(data.round) || Number(state.round);
-      if (round !== Number(state.round)) return false;
+      var round = Number(data.round) || 0;
+      if (!round || round !== Number(state.round)) return false;
       var seq = Number(data.seq) || 0;
+      if (isPlayerBanned({ id: data.by })) return false;
+      /* Первый снимок раунда задаёт художника: так клиент с устаревшей
+         retained-копией состояния не считает себя ведущим. Снимки от другого
+         автора в этом же раунде больше не принимаются. */
+      if (data.by) {
+        if (canvasOwner && canvasOwner !== data.by) return false;
+        canvasOwner = data.by;
+        if (state.drawer !== data.by) {
+          state.drawer = data.by;
+          var at = state.queue.indexOf(data.by);
+          if (at > 0) { state.queue.splice(at, 1); state.queue.unshift(data.by); }
+          else if (at < 0) state.queue.unshift(data.by);
+        }
+      }
       /* Снимок публикует только ведущий, и он является окончательным
          источником холста. Но старый снимок, пришедший позже нового, обязан
          проигрывать — иначе он стирает свежие штрихи. */
@@ -508,14 +545,18 @@
       if (seq < minSeq) return false;
       var strokes = data.strokes.filter(function (stroke) {
         var id = String(stroke && stroke.id || '');
-        return !id || (Number(deletedStrokes[id]) || 0) <= seq;
+        if (!id) return true;
+        /* Штрих отсутствует в снимке, только если удаление произошло не позже
+           этого снимка. Отсутствующая запись об удалении — штрих жив. */
+        var deletedAt = Number(deletedStrokes[id]) || 0;
+        return !deletedAt || deletedAt > seq;
       }).map(function (stroke) {
         return normalizeStroke(Object.assign({}, stroke));
       }).filter(Boolean);
       state.strokes = strokes;
-      state.canvasSeq = Math.max(Number(state.canvasSeq) || 0, seq);
+      state.canvasSeq = seq;
       canvasRound = round;
-      canvasVersion = Math.max(Number(canvasVersion) || 0, seq);
+      canvasVersion = seq;
       var ids = {};
       strokes.forEach(function (stroke) { ids[stroke.id] = true; });
       Object.keys(remoteDrafts).forEach(function (owner) {
@@ -539,8 +580,12 @@
   
     function rotateDrawer(reason, nextDrawerId) {
       if (!state) return false;
-      var rotationToken = Number(state.round) + ':' + Number(state.startedAt);
+      var rotationToken = Number(state.round) + ':' + Number(state.startedAt) + ':' +
+        Number(state.wordIndex) + ':' + String(state.drawer || '');
       if (handledRotation === rotationToken) return false;
+      /* Ход переводим только владелец хода или игрок, подтвердивший уход
+         предыдущего художника. Иначе две копии создают разные раунды. */
+      if (state.drawer && !isDrawer() && !drawerConfirmedGone(state.drawer)) return false;
       if (Date.now() - (Number(lastRotationAt) || 0) < 1500) return false;
       handledRotation = rotationToken;
       lastRotationAt = Date.now();
@@ -552,9 +597,13 @@
         commitStroke(localDraft);
         localDraft = null;
       }
-      var players = presentPlayers();
+      var active = activePeers();
+      var players = active.concat(active.some(function (p) { return p.id === myId; }) ? [] : [{
+        id: myId, name: profile.name, color: profile.color, avatar: profile.avatar
+      }]);
+      var activeIds = players.map(function (p) { return p.id; });
       var ids = state.queue.filter(function (id) {
-        return players.some(function (p) { return p.id === id; }) && !isIdBanned(id) && !isFingerprintBanned(presence[id] && presence[id].fingerprint);
+        return activeIds.indexOf(id) >= 0 && !isIdBanned(id) && !isFingerprintBanned(presence[id] && presence[id].fingerprint);
       });
       var pool = ids.filter(function (id) { return id !== state.drawer; });
       if (!pool.length) pool = ids;
@@ -578,7 +627,8 @@
       Object.keys(rasterBgCache).forEach(function (id) { delete rasterBgCache[id]; });
       rasterBgCacheKeys.length = 0;
       Object.keys(pendingStrokes).forEach(function (id) { delete pendingStrokes[id]; });
-      var clearSeq = (Number(state.canvasSeq) || 0) + 1;
+      /* Новый раунд — новый пустой холст, номер синхронизации начинается с нуля. */
+      var clearSeq = 0;
       /* Чистим retained-мусор прошлого раунда прямо на брокере. Пустой payload
          удаляет тему, поэтому при переподключении клиент не скачивает старые
          штрихи и снимки — это главная причина медленной синхронизации. */
@@ -597,13 +647,17 @@
       state.canvasSeq = clearSeq;
       canvasRound = 0;
       canvasVersion = 0;
+      canvasOwner = '';
+      pendingCanvas = null;
       futureStrokes = {};
       futureDeletions = {};
       deletedStrokes = {};
       seenChatIds = {};
       drawerMissingSince = 0;
+      drawerOfflineAt = 0;
       state.hitInfo = null;
       state.reveal = null;
+      state.lastWord = null;
       state.pausedUntil = 0;
       state.waitingForPlayers = false;
       state.expiredAt = 0;
@@ -615,7 +669,14 @@
       publishDraft(null, true);
       scheduleBaseRedraw();
       scheduleDrafts();
-      publishCanvasSnapshot(true);
+      /* Пустой снимок нового раунда публикует только новый художник. Иначе
+         снимок от старого ведущего назначил бы его художником всем игрокам. */
+      if (state.drawer === myId) publishCanvasSnapshot(true);
+      else {
+        canvasRound = Number(state.round);
+        canvasVersion = 0;
+        canvasOwner = state.drawer;
+      }
       var next = players.filter(function (p) { return p.id === state.drawer; })[0];
       systemMessage(reason + ' Следующий художник: ' + (next ? next.name : 'вы') + '.');
       return true;
@@ -666,30 +727,31 @@
        ход можно забрать только после подтверждённого отсутствия художника.
        В одиночку живущего ведущего быть не может, поэтому пустой раунд
        начинается сразу — иначе комната оставалась нерисуемой. */
-    function drawerConfirmedGone() {
-      if (!state || isDrawer()) return false;
-      if (!state.drawer) return true;
-      /* Retained-presence может прийти позже состояния: пока не прошёл срок
-         синхронизации, не объявляем ведущего ушедшим даже в одиночке. */
+    function drawerConfirmedGone(drawerId) {
+      var id = drawerId || (state && state.drawer);
+      if (!state || !id) return true;
+      if (id === myId && isDrawer()) return false;
+      /* Завещание MQTT приходит сразу при выходе: это подтверждённый уход. */
+      if (id === state.drawer && drawerOfflineAt &&
+          Date.now() - drawerOfflineAt >= DRAWER_OFFLINE_MS) return true;
+      /* В одиночке ждём только короткий срок доставки retained-presence.
+         Полный 15-секундный срок нужен лишь при живых собеседниках. */
+      if (soloRoom()) {
+        if (id === state.drawer && subscribedAt &&
+            Date.now() - subscribedAt < SOLO_GRACE_MS) return false;
+        return true;
+      }
       if (presenceReadyAt && Date.now() < presenceReadyAt) return false;
-      var players = presentPlayers();
-      var present = players.some(function (p) { return p.id === state.drawer; });
+      var present = activePeers().some(function (p) { return p.id === id; });
       if (present) {
         drawerMissingSince = 0;
         drawerSeenAt = Date.now();
         return false;
       }
-      if (players.length <= 1) return true;
-      var info = presence[state.drawer];
+      var info = presence[id];
       if (info && info.online === false) {
         if (!drawerMissingSince) drawerMissingSince = Date.now();
         return Date.now() - drawerMissingSince >= 5000;
-      }
-      var recent = info && info.online !== false &&
-        Date.now() - (Number(info.seenAt) || Number(info.ts) || 0) < 90000;
-      if (recent) {
-        drawerMissingSince = 0;
-        return false;
       }
       if (!drawerMissingSince) drawerMissingSince = Date.now();
       return Date.now() - drawerMissingSince >= DRAWER_MISSING_GRACE_MS;
@@ -708,29 +770,46 @@
       return isTurnAuthority();
     }
 
-    function beginReveal(reason, hitId) {
+    /* При уходе художника несколько игроков одновременно становятся
+       «полномочными». Завершает паузу только самый младший id — так раунд
+       не переводят дважды. */
+    function isRevealLeader() {
+      if (!isRevealAuthority()) return false;
+      if (isDrawer()) return true;
+      /* Пока художник жив, завершает паузу только он — иначе другой игрок
+         может перевести раунд раньше него. После ухода выбираем одного
+         детерминированного ведущего (в одиночке — себя). */
+      if (state && state.drawer && activePeers().some(function (p) { return p.id === state.drawer; })) return false;
+      if (soloRoom()) return true;
+      var ids = activePeers().map(function (p) { return p.id; }).sort();
+      return ids.length > 0 && ids[0] === myId;
+    }
+
+    function beginReveal(reason, hitId, durationMs) {
       if (!state || state.reveal) return false;
       if (localDraft && isDrawer()) {
         commitStroke(localDraft);
         localDraft = null;
       }
       var currentWord = word();
+      var label = reason || 'Раунд завершён';
       var reveal = {
         id: hitId || K.uid(),
         word: currentWord,
         round: state.round,
-        until: Date.now() + REVEAL_MS,
-        reason: reason || 'Раунд завершён',
+        until: Date.now() + (Number(durationMs) > 0 ? Number(durationMs) : REVEAL_MS),
+        reason: label,
         guesserId: String((state.hitInfo && state.hitInfo.guesserId) || '')
       };
       state.reveal = reveal;
+      state.lastWord = null;
       state.hitInfo = null;
       state.pausedUntil = 0;
       drawing = false;
       localDraft = null;
       remoteDrafts = {};
       publishDraft(null, true);
-      systemMessage('Загаданное слово: ' + currentWord + '.');
+      systemMessage(label + ' Загаданное слово: ' + currentWord + '.');
       publishState();
       scheduleRevealResolution(reveal);
       renderAll();
@@ -739,7 +818,7 @@
 
     function finishReveal(reveal) {
       if (!state || !state.reveal || state.reveal.id !== reveal.id) return;
-      if (!isRevealAuthority()) return;
+      if (!isRevealLeader()) return;
       rotateDrawer(reveal.reason || 'Раунд завершён.', reveal.guesserId);
       publishState();
       renderAll();
@@ -766,64 +845,62 @@
     function endRoundOnLeave() {
       if (!state || sessionKicked || !isDrawer()) return false;
       leavingRoom = myId;
-      var endedWord = word();
-      var reason = 'Художник вышел.';
-      state.lastWord = {
-        id: K.uid(),
-        word: endedWord,
-        round: state.round,
-        until: Date.now() + REVEAL_MS,
-        reason: reason
-      };
-      state.reveal = null;
-      state.hitInfo = null;
-      state.pausedUntil = 0;
-      drawing = false;
-      localDraft = null;
-      remoteDrafts = {};
-      publishDraft(null, true);
-      systemMessage('Загаданное слово: ' + endedWord + '.');
-      publishState();
-      rotateDrawer(reason);
-      publishState();
-      renderAll();
-      return true;
+      drawerOfflineAt = Date.now();
+      return beginReveal('Художник вышел.',
+        'leave-' + state.round + ':' + state.startedAt, LEAVE_REVEAL_MS);
     }
 
     function ensureDrawer() {
       if (!state) return;
-      if (state.drawer && presenceReadyAt && Date.now() < presenceReadyAt) return;
+      var solo = soloRoom();
+      /* В компании ждём медленный retained-presence. В одиночке — только
+         короткий срок доставки, после чего ход берётся сразу. */
+      var graceUntil = solo && subscribedAt
+        ? Math.min(presenceReadyAt || Infinity, subscribedAt + SOLO_GRACE_MS)
+        : presenceReadyAt;
+      if (state.drawer && graceUntil && Date.now() < graceUntil) return;
       if (!isTurnAuthority()) return;
-      var players = presentPlayers();
+      var active = activePeers();
+      var players = active.concat(active.some(function (p) { return p.id === myId; })
+        ? []
+        : [{ id: myId, name: profile.name, color: profile.color, avatar: profile.avatar }]);
       var ids = players.map(function (p) { return p.id; });
-      var drawerPresent = ids.indexOf(state.drawer) >= 0;
+      var drawerPresent = !!state.drawer && (state.drawer === myId ||
+        active.some(function (p) { return p.id === state.drawer; }));
 
-      /* В одиночку любая унаследованная от предыдущей сессии пауза — это новый раунд. */
-      if (players.length <= 1) {
-        var stale = !drawerPresent || state.reveal || state.lastWord || state.hitInfo || state.waitingForPlayers;
-        if (!stale) return;
+      if (state.reveal || state.lastWord) return;
+      if (solo) {
+        if (drawerPresent && state.drawer === myId) return;
+        /* Если ведущий был жив в этой сессии и ушёл, показываем слово и даём
+           короткую паузу. Унаследованную пустую комнату запускаем сразу. */
+        var info = state.drawer && presence[state.drawer];
+        var seenHere = info && (Number(info.receivedAt) || Number(info.seenAt) || 0) > subscribedAt;
+        var sawLeave = state.drawer && state.drawer !== myId &&
+          (drawerSeenAt > subscribedAt || seenHere || drawerOfflineAt > subscribedAt ||
+            drawerMissingSince > subscribedAt);
         state.queue = ids;
-        state.lastWord = null;
-        state.reveal = null;
         state.hitInfo = null;
+        state.waitingForPlayers = false;
+        if (sawLeave) {
+          beginReveal('Художник вышел.',
+            'leave-' + state.round + ':' + state.startedAt, LEAVE_REVEAL_MS);
+          return;
+        }
         rotateDrawer('Новый раунд');
         publishState();
         renderAll();
         return;
       }
 
-      if (state.reveal || state.lastWord) return;
       if (drawerPresent) {
         drawerMissingSince = 0;
         return;
       }
-      /* Раньше здесь забирался ход у живого ведущего, если presence пришёл
-         с задержкой. Теперь ждём подтверждённого отсутствия. */
+      /* Забираем ход только после подтверждённого ухода и с паузой со словом. */
       if (!drawerConfirmedGone()) return;
       state.queue = ids;
-      rotateDrawer('Художник вышел.');
-      publishState();
-      renderAll();
+      beginReveal('Художник вышел.',
+        'leave-' + state.round + ':' + state.startedAt, LEAVE_REVEAL_MS);
     }
     G.isCreator = isCreator;
     G.isIdBanned = isIdBanned;
@@ -847,7 +924,6 @@
     G.scheduleCanvasSnapshot = scheduleCanvasSnapshot;
     G.applyCanvasSnapshot = applyCanvasSnapshot;
     G.applyStrokeEvent = applyStrokeEvent;
-    G.applyRemoteStroke = applyRemoteStroke;
     G.systemMessage = systemMessage;
     G.rotateDrawer = rotateDrawer;
     G.checkTimeout = checkTimeout;
@@ -855,6 +931,9 @@
     G.showHitAnimation = showHitAnimation;
     G.isTurnAuthority = isTurnAuthority;
     G.isRevealAuthority = isRevealAuthority;
+    G.activePeers = activePeers;
+    G.soloRoom = soloRoom;
+    G.drawerConfirmedGone = drawerConfirmedGone;
     G.beginReveal = beginReveal;
     G.finishReveal = finishReveal;
     G.scheduleRevealResolution = scheduleRevealResolution;

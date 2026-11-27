@@ -62,6 +62,11 @@
       presenceReadyAt = subscribedAt + 15000;
       publishPresence(true);
       scheduleInitialState();
+      /* Пустая комната должна начать рисунок быстро, но retained-presence
+         успевает прийти: повторяем проверку хода после короткого окна. */
+      setTimeout(function () {
+        if (!sessionKicked && state) ensureDrawer();
+      }, SOLO_GRACE_MS + 150);
       renderTools();
     });
   
@@ -132,18 +137,23 @@
     function flushPendingCanvas() {
       var snapshot = pendingCanvas;
       if (!snapshot) return;
-      if (!snapshot.round || !state || Number(snapshot.round) === Number(state.round)) {
-        var minSeq = Number(state && state.canvasSeq) || 0;
-        if (canvasRound === Number(snapshot.round)) minSeq = Math.max(minSeq, Number(canvasVersion) || 0);
-        if (Number(snapshot.seq) < minSeq) {
-          pendingCanvas = null;
-          return;
-        }
+      if (!state || !snapshot.round || !snapshot.by ||
+          Number(snapshot.round) !== Number(state.round) ||
+          (state.drawer && snapshot.by !== state.drawer)) {
+        /* Отложившийся снимок чужого раунда/ведущего больше не ждёт своей очереди. */
+        pendingCanvas = null;
+        return;
+      }
+      var minSeq = Number(state.canvasSeq) || 0;
+      if (canvasRound === Number(snapshot.round)) minSeq = Math.max(minSeq, Number(canvasVersion) || 0);
+      if (Number(snapshot.seq) < minSeq) {
+        pendingCanvas = null;
+        return;
       }
       if (applyCanvasSnapshot(snapshot)) pendingCanvas = null;
     }
 
-    client.on('message', function (topic, message) {
+    client.on('message', function (topic, message, packet) {
       if (sessionKicked) return;
       var data = K.parse(message);
       if (!data) return;
@@ -156,10 +166,13 @@
       }
   
       if (topic.indexOf(K.topic(room, 'canvas/')) === 0) {
-        if (!data || !Array.isArray(data.strokes)) return;
+        if (!data || !Array.isArray(data.strokes) || !data.round || !data.by) return;
         if (isPlayerBanned({ id: data.by })) return;
+        /* Снимок принимается только от художника текущего раунда. Иначе
+           задержанная копия старого ведущего заменяет новый рисунок. */
+        if (state && state.drawer && data.by !== state.drawer) return;
         canvasSeen = true;
-        var snapshotRound = Number(data.round) || 0;
+        var snapshotRound = Number(data.round);
         var snapshotSeq = Number(data.seq) || 0;
         if (!state) {
           /* Состояние ещё не пришло: запоминаем самый свежий снимок. */
@@ -170,7 +183,7 @@
           }
           return;
         }
-        if (snapshotRound && snapshotRound !== Number(state.round)) {
+        if (snapshotRound !== Number(state.round)) {
           /* Снимок другого раунда не трогает текущий холст и ведущего. */
           if (snapshotRound > Number(state.round) &&
               (!pendingCanvas || snapshotRound > Number(pendingCanvas.round))) {
@@ -185,19 +198,22 @@
         if (snapshotSeq < minSnapshotSeq) return;
         if (applyCanvasSnapshot(data)) {
           canvasRound = snapshotRound;
-          canvasVersion = Math.max(canvasVersion, snapshotSeq);
+          canvasVersion = snapshotSeq;
           renderAll();
         }
         return;
       }
 
       if (topic === K.topic(room, 'state')) {
-        if (Number(data.v) < 2) return;
+        if (Number(data.v) < 2 || !data.round) return;
         stateSeen = true;
-        if (state && data.round && Number(data.round) < Number(state.round)) return;
+        if (state && Number(data.round) < Number(state.round)) return;
+        if (state && Number(data.round) > Number(state.round) + 1) return;
         if (state && Number(data.round) === Number(state.round) && Number(data.startedAt) &&
             Number(data.startedAt) < Number(state.startedAt)) return;
-        if (state && Number(data.updatedAt) < Number(state.updatedAt || 0)) return;
+        /* Более ранняя метка времени не должна задерживать новый раунд. */
+        if (state && Number(data.round) <= Number(state.round) &&
+            Number(data.updatedAt) < Number(state.updatedAt || 0)) return;
         var previousRound = state ? state.round + ':' + state.wordIndex : null;
         var merged = mergeState(normalizeState(data), state);
         state = merged.state;
@@ -226,10 +242,16 @@
              задержанные события прошлого раунда больше не нужны. */
           canvasRound = 0;
           canvasVersion = 0;
+          canvasOwner = '';
+          pendingCanvas = null;
+          pendingStrokes = {};
           futureStrokes = {};
           futureDeletions = {};
           deletedStrokes = {};
           seenChatIds = {};
+          drawerMissingSince = 0;
+          drawerOfflineAt = 0;
+          if (isDrawer()) scheduleCanvasSnapshot(200);
         }
         if (localDraft && !isDrawer()) {
           localDraft = null;
@@ -255,17 +277,22 @@
         if (data.id === (state && state.drawer)) {
           if (data.online === false) {
             if (!drawerMissingSince) drawerMissingSince = Date.now();
+            drawerOfflineAt = Date.now();
           } else {
             drawerMissingSince = 0;
             drawerSeenAt = Date.now();
+            drawerOfflineAt = 0;
           }
         }
         if (data.online === false) delete presence[data.id];
         else presence[data.id] = Object.assign({}, data, {
           ts: Number(data.ts) || 0,
           /* Время получения важнее времени отправки: медленный канал может
-             доставить свежий presence с «старым» ts. */
-          seenAt: Date.now()
+             доставить свежий presence с «старым» ts. Признак retained нужен,
+             чтобы не принимать старого призрака за живого собеседника. */
+          seenAt: Date.now(),
+          receivedAt: Date.now(),
+          retained: !!(packet && packet.retain)
         });
         renderPlayers();
         renderWord();
@@ -302,20 +329,21 @@
 
       if (topic.indexOf(K.topic(room, 'stroke/')) === 0) {
         var eventId = String(data && (data.id || (data.stroke && data.stroke.id)) || '');
-        if (!eventId || isPlayerBanned({ id: data.owner, fingerprint: data.fingerprint })) return;
-        var eventRound = Number(data.round) || 0;
+        if (!eventId || !data.round || !data.owner ||
+            isPlayerBanned({ id: data.owner, fingerprint: data.fingerprint })) return;
+        if (state && state.drawer && data.owner !== state.drawer) return;
+        var eventRound = Number(data.round);
         if (!state) {
-          if (data.deleted) futureDeletions[eventId] = data;
-          else if (eventRound) futureStrokes[eventId] = data;
-          else pendingStrokes[eventId] = data;
-          return;
-        }
-        if (eventRound && eventRound > Number(state.round)) {
           if (data.deleted) futureDeletions[eventId] = data;
           else futureStrokes[eventId] = data;
           return;
         }
-        if (eventRound && eventRound !== Number(state.round)) return;
+        if (eventRound > Number(state.round)) {
+          if (data.deleted) futureDeletions[eventId] = data;
+          else futureStrokes[eventId] = data;
+          return;
+        }
+        if (eventRound !== Number(state.round)) return;
         if (data.deleted) futureDeletions[eventId] = data;
         if (applyStrokeEvent(data)) scheduleDrafts();
         return;
@@ -324,8 +352,16 @@
   
     function createInitialState() {
       ensureMeta();
-      var players = presentPlayers();
+      var peers = activePeers();
+      var self = {
+        id: myId, name: profile.name, color: profile.color, avatar: profile.avatar,
+        fingerprint: myFingerprint, joinedAt: sessionJoinedAt, ts: Date.now(), online: true
+      };
+      var players = peers.concat(peers.some(function (p) { return p.id === myId; }) ? [] : [self])
+        .sort(function (a, b) { return (Number(a.joinedAt) || 0) - (Number(b.joinedAt) || 0); });
       var ids = players.map(function (p) { return p.id; });
+      /* Пустая комната начинает рисование сразу с создателя, а не с призрака
+         из retained-presence. */
       var drawer = ids[0] || myId;
       var dict = getDictionary();
   
@@ -376,10 +412,14 @@
         if (meta && meta.creatorId &&
             !(meta.creatorId === myId ||
               (meta.creatorFingerprint && meta.creatorFingerprint === myFingerprint))) return;
-        var players = presentPlayers();
-        var first = !players.length || players[0].id === myId;
+        /* Retained-presence с прошедшим ts не считается живым игроком: иначе
+           пустая комната ждёт 12 секунд и выбирает Drawer-призрака. */
+        var peers = activePeers();
+        var first = !peers.length || peers.every(function (p) {
+          return (Number(p.joinedAt) || 0) >= sessionJoinedAt;
+        });
         var waited = Date.now() - subscribedAt;
-        if (waited < (first ? 4000 : 12000)) {
+        if (waited < (first ? SOLO_GRACE_MS : 12000)) {
           scheduleInitialState();
           return;
         }

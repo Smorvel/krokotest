@@ -300,6 +300,53 @@
     return !!(state && Array.isArray(state.bans) && state.bans.indexOf(id) >= 0);
   }
 
+  /* Скроллбары скрыты до прокрутки или до момента, когда курсор оказался
+     у самой полосы. Дополнительно подсвечиваем конкретный прокручиваемый
+     блок, над которым находится курсор. */
+  function installScrollbarVisibility() {
+    var root = document.documentElement;
+    var rootTimer = null;
+    var hovered = null;
+    var hoverTimer = null;
+
+    function showRoot() {
+      root.classList.add('show-scrollbars');
+      if (rootTimer) clearTimeout(rootTimer);
+      rootTimer = setTimeout(function () { root.classList.remove('show-scrollbars'); }, 1400);
+    }
+
+    function showElement(el) {
+      if (!el || el === hovered) return;
+      if (hovered) hovered.classList.remove('scroll-hover');
+      hovered = el;
+      if (hovered) hovered.classList.add('scroll-hover');
+      if (hoverTimer) clearTimeout(hoverTimer);
+      hoverTimer = setTimeout(function () {
+        if (hovered) hovered.classList.remove('scroll-hover');
+        hovered = null;
+      }, 1400);
+    }
+
+    document.addEventListener('scroll', showRoot, true);
+    window.addEventListener('mousemove', function (event) {
+      if (event.clientX >= window.innerWidth - 20 || event.clientY >= window.innerHeight - 20) showRoot();
+      var el = event.target && event.target.nodeType === 1 ? event.target : null;
+      while (el && el !== document.body) {
+        var style = window.getComputedStyle(el);
+        if ((style.overflowY === 'auto' || style.overflowY === 'scroll') &&
+            el.scrollHeight > el.clientHeight + 2) {
+          showElement(el);
+          return;
+        }
+        el = el.parentElement;
+      }
+      showElement(null);
+    }, { passive: true });
+    window.addEventListener('touchstart', showRoot, { passive: true });
+  }
+
+  installScrollbarVisibility();
+
   window.KROKO = {
     BROKER: BROKER,
     ROOT: ROOT,

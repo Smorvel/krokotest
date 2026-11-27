@@ -18,6 +18,10 @@
   G.MAX_ROUND_MS = 60 * 60 * 1000;
   G.HIT_PAUSE_MS = 2400;
   G.REVEAL_MS = 3600;
+  G.LEAVE_REVEAL_MS = 3000;
+  G.SOLO_GRACE_MS = 900;
+  G.PRESENCE_TS_TTL_MS = 30000;
+  G.DRAWER_OFFLINE_MS = 1000;
   G.HISTORY_LIMIT = 30;
   /* Drawing history is never discarded. Old strokes are rasterized instead. */
   G.STROKE_SOFT_LIMIT = 160;
@@ -71,11 +75,13 @@
      штрихов — быстрый предпросмотр и не должны откатывать снимок назад. */
   G.canvasVersion = 0;
   G.canvasRound = 0;
+  G.canvasOwner = '';
   G.futureStrokes = {};
   G.futureDeletions = {};
   G.deletedStrokes = {};
   G.drawerMissingSince = 0;
   G.drawerSeenAt = 0;
+  G.drawerOfflineAt = 0;
   G.DRAWER_MISSING_GRACE_MS = 45000;
   G.seenChatIds = {};
   G.hitTimer = null;

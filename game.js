@@ -20,32 +20,41 @@
       syncDone = true;
     }
 
-    /* На узком экране холст ведёт себя как на croch.ru: при прокрутке вниз
-       он пропорционально уменьшается к своему нижнему краю, освобождая место
-       для чата. Сначала сбрасываем transform, чтобы измерить исходный размер. */
+    /* На узком экране холст остаётся целиком видимым: прокрутка компенсируется
+       сдвигом вниз, а квадрат пропорционально уменьшается к верхнему краю.
+       Так пользователь видит весь рисунок, пока не ушёл вниз к сообщениям. */
     var compactQuery = window.matchMedia ? window.matchMedia('(max-width: 820px)') : null;
     function compactCanvasScale() {
       if (!el.wrap) return 1;
       el.wrap.style.transform = '';
       if (!compactQuery || !compactQuery.matches) return 1;
-      var top = el.wrap.getBoundingClientRect().top + window.scrollY;
-      var passed = Math.max(0, window.scrollY - Math.max(0, Math.round(top - 8)));
-      var scale = Math.max(0.22, Math.min(1, 1 - passed / 650));
-      if (scale < 0.999) el.wrap.style.transform = 'scale(' + scale.toFixed(3) + ')';
+      var rect = el.wrap.getBoundingClientRect();
+      var start = Math.max(0, Math.round(rect.top + window.scrollY - 8));
+      var maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      var span = Math.max(180, maxScroll - start);
+      var passed = Math.max(0, Math.min(span, window.scrollY - start));
+      /* Сначала холст «приклеен» к верху и уменьшается, оставаясь целиком
+         видимым. Ближе к самому низу прокрутка отпускает его. */
+      var hold = Math.max(120, span * 0.72);
+      var pin = Math.min(passed, hold);
+      var release = Math.max(0, passed - hold);
+      var shift = pin - release * 1.2;
+      var scale = 1 - 0.42 * Math.min(1, passed / hold);
+      el.wrap.style.transform = 'translateY(' + Math.round(shift) + 'px) scale(' + scale.toFixed(3) + ')';
       return scale;
     }
 
-    /* Панель кистей фиксируется по фактическим координатам холста: она всегда
-       остаётся сбоку, даже когда страница прокручена или холст уменьшен. */
+    /* Панель кистей стоит сбоку от текущего положения холста. Скроллбара у неё
+       нет никогда: при нехватке высоты кнопки сами раскладываются в 2 ряда. */
     function alignToolRail() {
       if (!el.toolRail || !el.wrap) return;
       compactCanvasScale();
       var rect = el.wrap.getBoundingClientRect();
-      var railWidth = el.toolRail.offsetWidth || 54;
-      var top = Math.round(rect.top);
-      var height = Math.max(48, Math.min(Math.round(rect.height), window.innerHeight + 8));
+      var railWidth = el.toolRail.offsetWidth || 118;
+      var limit = Math.max(120, window.innerHeight - 16);
+      var height = Math.min(limit, Math.max(Math.min(260, limit), Math.round(rect.height)));
       el.toolRail.style.left = Math.max(4, Math.round(rect.left - railWidth - 8)) + 'px';
-      el.toolRail.style.top = top + 'px';
+      el.toolRail.style.top = Math.round(rect.top) + 'px';
       el.toolRail.style.height = height + 'px';
       el.toolRail.style.maxHeight = height + 'px';
     }
@@ -63,7 +72,7 @@
          штриха потерялось, следующий снимок всё равно восстановит его у всех.
          Общее состояние шлём реже — оно не несёт рисунок и только дублирует
          уже доставленные события. */
-      if (state && isDrawer()) {
+      if (state && isDrawer() && !state.reveal && !state.lastWord && state.drawer === myId) {
         publishCanvasSnapshot();
         if (periodicTick % 3 === 0) publishState();
       }
