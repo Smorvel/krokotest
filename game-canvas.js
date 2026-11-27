@@ -74,7 +74,17 @@
       } else {
         var last = localDraft.points[localDraft.points.length - 1];
         if (Math.hypot(next.x - last.x, next.y - last.y) < 1) return;
-        if (localDraft.points.length < 4000) localDraft.points.push(next);
+        localDraft.points.push(next);
+        /* Длинный непрерывный мазок прореживается по форме, а не обрывается
+           на жёстком лимите: курсор продолжает вести линию, а отрисовка не
+           раздувается до тысяч точек. */
+        if (localDraft.points.length > 800) {
+          localDraft.points = simplifyPoints(
+            localDraft.points,
+            Math.max(0.7, Math.min(2, (tool.size || 18) * 0.05)),
+            400
+          );
+        }
       }
       scheduleDrafts();
       if (Date.now() - lastDraftPublish > 300) {

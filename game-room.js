@@ -387,8 +387,9 @@
       }, true, 0);
     }
 
-    /* Каждый завершённый штрих публикуется отдельно, чтобы его потеря
-       при большой общей публикации состояния не скрыла рисунок. */
+    /* Каждый завершённый штрих публикуется отдельно, но НЕ с retain: иначе
+       на публичном брокере копятся тысячи тем и медленный канал залипает на
+       старой истории. Новый игрок получает рисунок из retained canvas/<round>. */
     function publishStroke(stroke, seq) {
       if (sessionKicked || !state || !client || !client.connected || !stroke || !stroke.id) return;
       K.publish(client, K.topic(room, 'stroke/' + stroke.id), {
@@ -397,7 +398,7 @@
         owner: myId,
         stroke: stroke,
         at: Date.now()
-      }, true);
+      }, false);
     }
 
     function publishStrokeDeletion(id, seq) {
@@ -409,7 +410,7 @@
         id: id,
         deleted: true,
         at: Date.now()
-      }, true);
+      }, false);
     }
 
     function applyStrokeEvent(data) {
@@ -482,6 +483,18 @@
       if (typeof renderSync === 'function') renderSync();
     }
 
+    /* Полный снимок после каждого изменения: раз отдельные штрихи больше не
+       retain, именно он гарантирует, что опоздавший игрок увидит весь рисунок.
+       Небольшая задержка склеивает несколько быстрых штрихов в одну публикацию. */
+    function scheduleCanvasSnapshot(delay) {
+      if (sessionKicked || !state) return;
+      if (canvasSnapshotTimer) clearTimeout(canvasSnapshotTimer);
+      canvasSnapshotTimer = setTimeout(function () {
+        canvasSnapshotTimer = null;
+        publishCanvasSnapshot();
+      }, Number(delay) || 400);
+    }
+
     function applyCanvasSnapshot(data) {
       if (!state || !data || !Array.isArray(data.strokes)) return false;
       var round = Number(data.round) || Number(state.round);
@@ -490,7 +503,9 @@
       /* Снимок публикует только ведущий, и он является окончательным
          источником холста. Но старый снимок, пришедший позже нового, обязан
          проигрывать — иначе он стирает свежие штрихи. */
-      if (canvasRound === round && seq < Math.max(Number(canvasVersion) || 0, Number(state.canvasSeq) || 0)) return false;
+      var minSeq = Number(state.canvasSeq) || 0;
+      if (canvasRound === round) minSeq = Math.max(minSeq, Number(canvasVersion) || 0);
+      if (seq < minSeq) return false;
       var strokes = data.strokes.filter(function (stroke) {
         var id = String(stroke && stroke.id || '');
         return !id || (Number(deletedStrokes[id]) || 0) <= seq;
@@ -529,6 +544,10 @@
       if (Date.now() - (Number(lastRotationAt) || 0) < 1500) return false;
       handledRotation = rotationToken;
       lastRotationAt = Date.now();
+      if (canvasSnapshotTimer) {
+        clearTimeout(canvasSnapshotTimer);
+        canvasSnapshotTimer = null;
+      }
       if (localDraft && isDrawer()) {
         commitStroke(localDraft);
         localDraft = null;
@@ -560,7 +579,20 @@
       rasterBgCacheKeys.length = 0;
       Object.keys(pendingStrokes).forEach(function (id) { delete pendingStrokes[id]; });
       var clearSeq = (Number(state.canvasSeq) || 0) + 1;
-      state.strokes.forEach(function (stroke) { publishStrokeDeletion(stroke.id, clearSeq); });
+      /* Чистим retained-мусор прошлого раунда прямо на брокере. Пустой payload
+         удаляет тему, поэтому при переподключении клиент не скачивает старые
+         штрихи и снимки — это главная причина медленной синхронизации. */
+      if (client && client.connected) {
+        state.strokes.forEach(function (stroke) {
+          if (stroke && stroke.id) {
+            client.publish(K.topic(room, 'stroke/' + stroke.id), '', { qos: 1, retain: true });
+          }
+        });
+        var oldRound = Number(state.round) - 1;
+        if (oldRound > 0) {
+          client.publish(K.topic(room, 'canvas/' + oldRound), '', { qos: 1, retain: true });
+        }
+      }
       state.strokes = [];
       state.canvasSeq = clearSeq;
       canvasRound = 0;
@@ -630,12 +662,29 @@
       }, HIT_PAUSE_MS);
     }
   
-    /* «Нет presence» в медленном канале — ещё не значит «ушёл». Ход может
-       перехватить только создатель комнаты после долгого подтверждённого
-       отсутствия художника. Обычный игрок никогда не забирает ход у ведущего. */
+    /* «Нет presence» в медленном канале — ещё не значит «ушёл». В компании
+       ход можно забрать только после подтверждённого отсутствия художника.
+       В одиночку живущего ведущего быть не может, поэтому пустой раунд
+       начинается сразу — иначе комната оставалась нерисуемой. */
     function drawerConfirmedGone() {
-      if (!state || !state.drawer || isDrawer()) return false;
+      if (!state || isDrawer()) return false;
+      if (!state.drawer) return true;
+      /* Retained-presence может прийти позже состояния: пока не прошёл срок
+         синхронизации, не объявляем ведущего ушедшим даже в одиночке. */
+      if (presenceReadyAt && Date.now() < presenceReadyAt) return false;
+      var players = presentPlayers();
+      var present = players.some(function (p) { return p.id === state.drawer; });
+      if (present) {
+        drawerMissingSince = 0;
+        drawerSeenAt = Date.now();
+        return false;
+      }
+      if (players.length <= 1) return true;
       var info = presence[state.drawer];
+      if (info && info.online === false) {
+        if (!drawerMissingSince) drawerMissingSince = Date.now();
+        return Date.now() - drawerMissingSince >= 5000;
+      }
       var recent = info && info.online !== false &&
         Date.now() - (Number(info.seenAt) || Number(info.ts) || 0) < 90000;
       if (recent) {
@@ -646,10 +695,13 @@
       return Date.now() - drawerMissingSince >= DRAWER_MISSING_GRACE_MS;
     }
 
+    /* Если ведущий действительно пропал, ход берёт любой присутствующий игрок,
+       а не только создатель. Иначе «пустой» раунд висел без художника. */
     function isTurnAuthority() {
       if (!state) return false;
       if (isDrawer()) return true;
-      return isCreator() && drawerConfirmedGone();
+      if (!drawerConfirmedGone()) return false;
+      return presentPlayers().some(function (p) { return p.id === myId; });
     }
 
     function isRevealAuthority() {
@@ -740,7 +792,7 @@
 
     function ensureDrawer() {
       if (!state) return;
-      if (presenceReadyAt && Date.now() < presenceReadyAt) return;
+      if (state.drawer && presenceReadyAt && Date.now() < presenceReadyAt) return;
       if (!isTurnAuthority()) return;
       var players = presentPlayers();
       var ids = players.map(function (p) { return p.id; });
@@ -792,6 +844,7 @@
     G.publishStroke = publishStroke;
     G.publishStrokeDeletion = publishStrokeDeletion;
     G.publishCanvasSnapshot = publishCanvasSnapshot;
+    G.scheduleCanvasSnapshot = scheduleCanvasSnapshot;
     G.applyCanvasSnapshot = applyCanvasSnapshot;
     G.applyStrokeEvent = applyStrokeEvent;
     G.applyRemoteStroke = applyRemoteStroke;

@@ -66,6 +66,7 @@
   G.handledRotation = null;
   G.lastRotationAt = 0;
   G.canvasSeen = false;
+  G.canvasSnapshotTimer = null;
   /* Версия холста приходит только из canvas/<round>. Отдельные события
      штрихов — быстрый предпросмотр и не должны откатывать снимок назад. */
   G.canvasVersion = 0;
@@ -127,7 +128,7 @@
     wordSourceLabel: document.getElementById('wordSourceLabel'),
     word: document.getElementById('wordText'),
     drawer: document.getElementById('drawerName'),
-    round: document.getElementById('roundText'),
+    drawerAvatar: document.getElementById('drawerAvatar'),
     timer: document.getElementById('timerText'),
     wrap: document.getElementById('canvasWrap'),
     cursor: document.getElementById('brushCursor'),

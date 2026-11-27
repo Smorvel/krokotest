@@ -119,7 +119,9 @@
       var snapshot = pendingCanvas;
       if (!snapshot) return;
       if (!snapshot.round || !state || Number(snapshot.round) === Number(state.round)) {
-        if (Number(snapshot.seq) < Math.max(Number(canvasVersion) || 0, Number(state.canvasSeq) || 0)) {
+        var minSeq = Number(state && state.canvasSeq) || 0;
+        if (canvasRound === Number(snapshot.round)) minSeq = Math.max(minSeq, Number(canvasVersion) || 0);
+        if (Number(snapshot.seq) < minSeq) {
           pendingCanvas = null;
           return;
         }
@@ -164,8 +166,9 @@
         }
         /* Медленный канал может доставить старый снимок после нового штриха.
            Такой снимок нельзя применять: он стёр бы свежие штрихи. */
-        if (canvasRound === snapshotRound &&
-            snapshotSeq < Math.max(Number(canvasVersion) || 0, Number(state.canvasSeq) || 0)) return;
+        var minSnapshotSeq = Number(state.canvasSeq) || 0;
+        if (canvasRound === snapshotRound) minSnapshotSeq = Math.max(minSnapshotSeq, Number(canvasVersion) || 0);
+        if (snapshotSeq < minSnapshotSeq) return;
         if (applyCanvasSnapshot(data)) {
           canvasRound = snapshotRound;
           canvasVersion = Math.max(canvasVersion, snapshotSeq);
@@ -191,6 +194,11 @@
           if (committed) delete remoteDrafts[id];
         });
         banned = isBannedMe();
+        /* Забаненный не остаётся «наблюдателем»: его сразу возвращает на главную. */
+        if (banned) {
+          kickForBan();
+          return;
+        }
   
         if (!banned && leavingRoom !== myId && state.queue.indexOf(myId) < 0) {
           state.queue.push(myId);
@@ -248,6 +256,9 @@
         renderPlayers();
         renderWord();
         renderTools();
+        /* Новый игрок подписался на комнату: сразу отдаём ему полный холст,
+          не дожидаясь очередного пятисекундного снимка. */
+        if (data.online !== false && isDrawer()) scheduleCanvasSnapshot(200);
         if (state) ensureDrawer();
         checkTimeout();
         return;

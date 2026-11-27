@@ -66,7 +66,16 @@
     });
   } catch (err) { /* приватный режим */ }
 
+  function kickForBan() {
+    if (G.sessionKicked) return;
+    G.sessionKicked = true;
+    try { if (G.client && G.client.connected) G.publishPresence(false); } catch (err) { /* уже отключено */ }
+    try { if (G.client) G.client.end(true); } catch (err) { /* уже отключено */ }
+    location.replace('index.html?banned=1');
+  }
+
   G.sessionTabId = tabId;
   G.sessionClaimAt = claimAt;
   G.kickForDuplicateSession = kick;
+  G.kickForBan = kickForBan;
 })(window.KROKO_GAME);

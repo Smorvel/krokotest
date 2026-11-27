@@ -67,7 +67,8 @@
       var players = presentPlayers();
       var drawer = players.filter(function (p) { return p.id === state.drawer; })[0];
       el.drawer.textContent = drawer ? drawer.name : '—';
-      el.round.textContent = state.round;
+      if (el.drawerAvatar) el.drawerAvatar.innerHTML = drawer ? K.avatarMarkup(drawer) : '';
+      if (el.round) el.round.textContent = state.round;
       el.wordSourceLabel.textContent = getDictionary().name;
       el.word.textContent = displayCharacters(word()).map(function (item) { return item.char; }).join('');
     }

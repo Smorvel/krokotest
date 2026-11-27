@@ -9,6 +9,11 @@
   var EYE_LABELS = { round: 'Круглые', happy: 'Весёлые', sleepy: 'Сонные', wide: 'Широкие', wink: 'Подмигивание' };
   var MOUTH_LABELS = { smile: 'Улыбка', grin: 'С зубами', neutral: 'Ровный', frown: 'Грустный', surprised: 'Удивлённый' };
 
+  var banNotice = document.getElementById('banNotice');
+  if (banNotice && new URLSearchParams(location.search).get('banned') === '1') {
+    banNotice.hidden = false;
+  }
+
   var profile = K.getProfile();
   var defaultDictionary = K.findDictionary('easy');
   var metas = {};

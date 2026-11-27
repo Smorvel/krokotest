@@ -119,9 +119,11 @@
         return raw;
       }
       var elapsed = (clockMs() - current.t) / 1000;
-      var dt = Math.max(0.004, Math.min(0.05, elapsed > 0 ? elapsed : 0.016));
+      var dt = Math.max(0.001, Math.min(0.05, elapsed > 0 ? elapsed : 0.016));
       var speed = Math.hypot(raw.x - current.rawX, raw.y - current.rawY) / dt;
-      var cutoff = 1 + speed / 260;
+      /* Один Euro-фильтр с высоким минимальным cutoff: на длинном мазке линия
+         не отстаёт от курсора и не превращается в угловатую лестницу. */
+      var cutoff = 6 + Math.min(12, speed / 45);
       var alpha = forceEnd ? 1 : 1 - Math.exp(-dt * 2 * Math.PI * cutoff);
       var point = {
         x: current.x + (raw.x - current.x) * alpha,
@@ -174,6 +176,71 @@
     function strokePath(context, points, smooth) {
       if (smooth) smoothPath(context, points);
       else polyline(context, points);
+    }
+
+    function pointSegmentDistance(point, a, b) {
+      var dx = b.x - a.x;
+      var dy = b.y - a.y;
+      if (dx === 0 && dy === 0) return Math.hypot(point.x - a.x, point.y - a.y);
+      var t = ((point.x - a.x) * dx + (point.y - a.y) * dy) / (dx * dx + dy * dy);
+      t = Math.max(0, Math.min(1, t));
+      return Math.hypot(point.x - (a.x + t * dx), point.y - (a.y + t * dy));
+    }
+
+    /* Прореживание длинного мазка по форме, а не «каждую вторую точку».
+       Сглаживание остаётся плавным, а в сеть и отрисовку уходит в разы меньше
+       точек. Все параметры сохраняются на оставшихся точках. */
+    function simplifyPoints(points, tolerance, maxPoints) {
+      if (!Array.isArray(points) || points.length < 3) return points;
+      var limit = Math.max(3, Number(maxPoints) || 900);
+      if (points.length <= limit) return points;
+      var tol = Math.max(0.4, Number(tolerance) || 0.8);
+
+      function build(threshold) {
+        var keep = new Uint8Array(points.length);
+        keep[0] = 1;
+        keep[points.length - 1] = 1;
+        var stack = [[0, points.length - 1]];
+        while (stack.length) {
+          var segment = stack.pop();
+          var start = segment[0];
+          var end = segment[1];
+          if (end - start < 2) continue;
+          var farthest = -1;
+          var maxDist = 0;
+          for (var i = start + 1; i < end; i++) {
+            var dist = pointSegmentDistance(points[i], points[start], points[end]);
+            if (dist > maxDist) {
+              maxDist = dist;
+              farthest = i;
+            }
+          }
+          if (farthest > 0 && maxDist > threshold) {
+            keep[farthest] = 1;
+            stack.push([start, farthest], [farthest, end]);
+          }
+        }
+        var result = [];
+        for (var j = 0; j < points.length; j++) if (keep[j]) result.push(points[j]);
+        return result;
+      }
+
+      var result = build(tol);
+      for (var attempt = 0; attempt < 6 && result.length > limit; attempt++) {
+        tol *= 1.7;
+        result = build(tol);
+      }
+      if (result.length > limit) {
+        var trimmed = [result[0]];
+        var slots = limit - 2;
+        for (var k = 1; k < slots; k++) {
+          var index = Math.min(result.length - 2, Math.max(1, Math.round(k * (result.length - 1) / slots)));
+          trimmed.push(result[index]);
+        }
+        trimmed.push(result[result.length - 1]);
+        result = trimmed;
+      }
+      return result;
     }
   
     function stampAlong(points, spacing, callback) {
@@ -518,14 +585,22 @@
       if (!state || !stroke || !isDrawer()) return;
       stroke.cw = canvas.width;
       stroke.ch = canvas.height;
+      if (Array.isArray(stroke.points) && !isShape(stroke.tool)) {
+        stroke.points = simplifyPoints(
+          stroke.points,
+          Math.max(0.7, Math.min(2, (Number(stroke.size) || 18) * 0.05)),
+          900
+        );
+      }
       state.canvasSeq = (Number(state.canvasSeq) || 0) + 1;
       stroke.seq = state.canvasSeq;
       state.strokes.push(stroke);
       /* Одно маленькое событие штриха — этого достаточно для мгновенной
-         синхронизации. Полный снимок и состояние публикуются редко, иначе
-         медленный канал (Китай ↔ Украина) забивается дублями. */
+         синхронизации. Полный снимок тоже обновляем, но с небольшой задержкой:
+         он заменяет retained-историю штрихов для опоздавших игроков. */
       publishStroke(stroke, stroke.seq);
       compactStrokes();
+      scheduleCanvasSnapshot(500);
       scheduleBaseRedraw();
     }
 
@@ -634,6 +709,7 @@
     G.polyline = polyline;
     G.smoothPath = smoothPath;
     G.strokePath = strokePath;
+    G.simplifyPoints = simplifyPoints;
     G.stampAlong = stampAlong;
     G.cachedStamp = cachedStamp;
     G.paintStroke = paintStroke;

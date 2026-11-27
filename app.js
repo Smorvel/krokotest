@@ -3,7 +3,9 @@
   'use strict';
 
   var BROKER = 'wss://broker.hivemq.com:8884/mqtt';
-  var ROOT = 'krokotest/v2/rooms';
+  /* Новый корень: старые retained-сообщения krokotest/v2 больше не скачиваются
+     при подключении. Это убирает накопленный мусор на медленных каналах. */
+  var ROOT = 'krokotest/v3/rooms';
   var DEFAULT_ROOM = 'prostye';
   var KEY_PROFILE = 'krokotest.profile.v1';
   var KEY_DICTS = 'krokotest.dictionaries.v1';
