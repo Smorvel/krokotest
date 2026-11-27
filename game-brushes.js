@@ -515,7 +515,7 @@
     }
 
     function commitStroke(stroke) {
-      if (!state || !stroke) return;
+      if (!state || !stroke || !isDrawer()) return;
       stroke.cw = canvas.width;
       stroke.ch = canvas.height;
       state.canvasSeq = (Number(state.canvasSeq) || 0) + 1;
@@ -523,6 +523,7 @@
       state.strokes.push(stroke);
       publishStroke(stroke, stroke.seq);
       compactStrokes();
+      publishCanvasSnapshot();
       publishState();
       scheduleBaseRedraw();
     }

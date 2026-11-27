@@ -52,6 +52,7 @@
       client.subscribe(K.topic(room, 'presence/+'), { qos: 1 });
       client.subscribe(K.topic(room, 'draft/+'), { qos: 1 });
       client.subscribe(K.topic(room, 'stroke/+'), { qos: 1 });
+      client.subscribe(K.topic(room, 'canvas/+'), { qos: 1 });
       subscribedAt = Date.now();
       presenceReadyAt = subscribedAt + 5000;
       publishPresence(true);
@@ -82,6 +83,12 @@
       pending.forEach(applyStrokeEvent);
     }
 
+    function flushPendingCanvas() {
+      var snapshot = pendingCanvas;
+      pendingCanvas = null;
+      if (snapshot) applyCanvasSnapshot(snapshot);
+    }
+
     client.on('message', function (topic, message) {
       if (sessionKicked) return;
       var data = K.parse(message);
@@ -94,6 +101,18 @@
         return;
       }
   
+      if (topic.indexOf(K.topic(room, 'canvas/')) === 0) {
+        if (!data || !Array.isArray(data.strokes)) return;
+        if (isPlayerBanned({ id: data.by })) return;
+        if (state && data.round && Number(data.round) !== Number(state.round)) return;
+        if (!state) {
+          pendingCanvas = data;
+          return;
+        }
+        applyCanvasSnapshot(data);
+        return;
+      }
+
       if (topic === K.topic(room, 'state')) {
         if (Number(data.v) < 2) return;
         stateSeen = true;
@@ -118,6 +137,12 @@
           localDraft = null;
           drawing = false;
         }
+        if (localDraft && !isDrawer()) {
+          localDraft = null;
+          drawing = false;
+          publishDraft(null, true);
+        }
+        flushPendingCanvas();
         flushPendingStrokes();
         applyMeta();
         renderAll();
@@ -144,6 +169,7 @@
   
       if (topic.indexOf(K.topic(room, 'draft/')) === 0) {
         if (!data.id || data.id === myId || isPlayerBanned(data)) return;
+        if (state && state.drawer && data.id !== state.drawer) return;
         if (data.stroke) {
           remoteDrafts[data.id] = data.stroke;
         } else if (data.discard) {

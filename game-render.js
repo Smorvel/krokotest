@@ -123,6 +123,13 @@
       el.settingsDictDelete.disabled = !editingInlineDict;
     }
   
+    function renderSync() {
+      if (!el.sync) return;
+      el.sync.textContent = client && client.connected
+        ? 'синхронизация v' + (Number(state && state.canvasSeq) || 0)
+        : 'переподключение...';
+    }
+
     function renderTools() {
       var revealing = !!(state && state.reveal);
       var canDraw = isDrawer() && !isBannedMe() && !revealing;
@@ -150,7 +157,7 @@
       else if (revealing) el.status.textContent = 'Раунд завершён. Следующий раунд скоро.';
       else if (canDraw) el.status.textContent = 'Вы рисуете слово. Остальные угадывают!';
       else el.status.textContent = 'Вы угадываете. Рисунок виден без затемнения!';
-      el.sync.textContent = client && client.connected ? 'онлайн-синхронизация' : 'переподключение...';
+      renderSync();
       el.chatInput.disabled = isDrawer() || isBannedMe() || isHitPaused() || revealing;
       el.chatInput.placeholder = revealing
         ? 'Раунд завершён — смотрите слово'
@@ -231,6 +238,7 @@
     G.renderToolGrid = renderToolGrid;
     G.renderDictChecks = renderDictChecks;
     G.renderInlineDicts = renderInlineDicts;
+    G.renderSync = renderSync;
     G.renderTools = renderTools;
     G.renderReveal = renderReveal;
     G.renderTimer = renderTimer;

@@ -188,16 +188,28 @@
       });
       incoming.scores = scores;
 
-      /* Рисунок — это события с монотонным номером. Более старая копия
-         состояния не должна стирать уже опубликованные штрихи. */
+      /* Рисунок задаёт только текущий художник. Чужая копия состояния не
+         может заменить свежий холст, даже если её номер версии больше. */
       var incomingSeq = Number(incoming.canvasSeq) || 0;
       var previousSeq = Number(previous.canvasSeq) || 0;
+      var incomingRound = Number(incoming.round) || 0;
+      var previousRoundNum = Number(previous.round) || 0;
+      var newerRound = incomingRound > previousRoundNum;
+      var olderRound = incomingRound < previousRoundNum;
+      var authored = !!incoming.updatedBy && incoming.updatedBy === incoming.drawer;
       var incomingStrokes = incoming.strokes || [];
       var previousStrokes = previous.strokes || [];
-      if (!sameRound || incomingSeq > previousSeq) {
+      if (olderRound) {
+        incoming.strokes = previousStrokes.slice();
+        incoming.canvasSeq = previousSeq;
+        changed = true;
+      } else if (newerRound || (sameRound && authored && incomingSeq >= previousSeq)) {
         incoming.strokes = incomingStrokes.slice();
-        if (!sameRound || strokeIds(incoming.strokes).join(',') !== strokeIds(previousStrokes).join(',')) changed = true;
-      } else if (incomingSeq === previousSeq) {
+        if (strokeIds(incoming.strokes).join(',') !== strokeIds(previousStrokes).join(',')) changed = true;
+      } else if (sameRound && !authored && incomingSeq > previousSeq) {
+        incoming.strokes = previousStrokes.slice();
+        incoming.canvasSeq = previousSeq;
+      } else if (sameRound && incomingSeq === previousSeq) {
         var ids = {};
         var strokes = incomingStrokes.slice();
         strokes.forEach(function (stroke) { ids[stroke.id] = true; });
@@ -276,6 +288,7 @@
       state.updatedAt = Date.now();
       state.updatedBy = myId;
       K.publish(client, K.topic(room, 'state'), state, true);
+      if (typeof renderSync === 'function') renderSync();
     }
   
     function publishPresence(online) {
@@ -351,13 +364,16 @@
         if (pendingStrokes[id]) delete pendingStrokes[id];
         state.canvasSeq = Math.max(currentSeq, seq);
         if (state.strokes.length !== before) scheduleBaseRedraw();
+        if (typeof renderSync === 'function') renderSync();
         return true;
       }
 
       if (!data.stroke || data.stroke.id !== id) return false;
+      if (state.drawer && data.owner && data.owner !== state.drawer && data.stroke.tool !== 'raster') return false;
       if (currentSeq > seq) return false;
       if (state.strokes.some(function (item) { return item.id === id; })) {
         state.canvasSeq = Math.max(currentSeq, seq);
+        if (typeof renderSync === 'function') renderSync();
         return false;
       }
       var normalized = normalizeStroke(Object.assign({}, data.stroke));
@@ -369,11 +385,50 @@
       });
       if (pendingStrokes[id]) delete pendingStrokes[id];
       scheduleBaseRedraw();
+      if (typeof renderSync === 'function') renderSync();
       return true;
     }
 
     function applyRemoteStroke(stroke) {
       return applyStrokeEvent({ stroke: stroke, seq: Number(state && state.canvasSeq) || 0 });
+    }
+
+    /* Полный упорядоченный снимок холста. Его публикует только художник,
+       поэтому у всех игроков рано или поздно оказывается один и тот же набор
+       штрихов, даже если отдельное событие штриха не дошло. */
+    function publishCanvasSnapshot(force) {
+      if (sessionKicked || !state || !client || !client.connected) return;
+      if (!force && !isDrawer()) return;
+      K.publish(client, K.topic(room, 'canvas/' + state.round), {
+        round: state.round,
+        seq: Number(state.canvasSeq) || 0,
+        by: myId,
+        strokes: state.strokes,
+        at: Date.now()
+      }, true);
+      if (typeof renderSync === 'function') renderSync();
+    }
+
+    function applyCanvasSnapshot(data) {
+      if (!state || !data || !Array.isArray(data.strokes)) return false;
+      if (data.round && Number(data.round) !== Number(state.round)) return false;
+      var seq = Number(data.seq) || 0;
+      if (seq < (Number(state.canvasSeq) || 0)) return false;
+      var strokes = data.strokes.map(function (stroke) {
+        return normalizeStroke(Object.assign({}, stroke));
+      }).filter(Boolean);
+      state.strokes = strokes;
+      state.canvasSeq = seq;
+      var ids = {};
+      strokes.forEach(function (stroke) { ids[stroke.id] = true; });
+      Object.keys(remoteDrafts).forEach(function (owner) {
+        var draft = remoteDrafts[owner];
+        if (draft && ids[draft.id]) delete remoteDrafts[owner];
+      });
+      scheduleBaseRedraw();
+      scheduleDrafts();
+      if (typeof renderSync === 'function') renderSync();
+      return true;
     }
   
     function systemMessage(text) {
@@ -386,7 +441,12 @@
     }
   
     function rotateDrawer(reason, nextDrawerId) {
-      if (!state) return;
+      if (!state) return false;
+      var rotationToken = Number(state.round) + ':' + Number(state.startedAt);
+      if (handledRotation === rotationToken) return false;
+      if (Date.now() - (Number(lastRotationAt) || 0) < 1500) return false;
+      handledRotation = rotationToken;
+      lastRotationAt = Date.now();
       if (localDraft && isDrawer()) {
         commitStroke(localDraft);
         localDraft = null;
@@ -420,7 +480,7 @@
       var clearSeq = (Number(state.canvasSeq) || 0) + 1;
       state.strokes.forEach(function (stroke) { publishStrokeDeletion(stroke.id, clearSeq); });
       state.strokes = [];
-      state.canvasSeq = 0;
+      state.canvasSeq = clearSeq;
       state.hitInfo = null;
       state.reveal = null;
       state.pausedUntil = 0;
@@ -434,10 +494,12 @@
       publishDraft(null, true);
       scheduleBaseRedraw();
       scheduleDrafts();
+      publishCanvasSnapshot(true);
       var next = players.filter(function (p) { return p.id === state.drawer; })[0];
       systemMessage(reason + ' Следующий художник: ' + (next ? next.name : 'вы') + '.');
+      return true;
     }
-  
+
     function checkTimeout() {
       if (!state || state.reveal || isHitPaused() || state.roundMs === 0) return;
       var expired = Date.now() - state.startedAt >= state.roundMs;
@@ -479,6 +541,16 @@
       }, HIT_PAUSE_MS);
     }
   
+    function isTurnAuthority() {
+      if (!state) return false;
+      var players = presentPlayers();
+      if (!players.length) return false;
+      if (isCreator()) return true;
+      var drawerPresent = players.some(function (p) { return p.id === state.drawer; });
+      if (drawerPresent) return isDrawer();
+      return players[0].id === myId;
+    }
+
     function isRevealAuthority() {
       if (!state) return false;
       var players = presentPlayers();
@@ -574,6 +646,7 @@
     function ensureDrawer() {
       if (!state) return;
       if (presenceReadyAt && Date.now() < presenceReadyAt) return;
+      if (!isTurnAuthority()) return;
       var players = presentPlayers();
       var ids = players.map(function (p) { return p.id; });
       var drawerPresent = ids.indexOf(state.drawer) >= 0;
@@ -613,6 +686,8 @@
     G.publishDraft = publishDraft;
     G.publishStroke = publishStroke;
     G.publishStrokeDeletion = publishStrokeDeletion;
+    G.publishCanvasSnapshot = publishCanvasSnapshot;
+    G.applyCanvasSnapshot = applyCanvasSnapshot;
     G.applyStrokeEvent = applyStrokeEvent;
     G.applyRemoteStroke = applyRemoteStroke;
     G.systemMessage = systemMessage;
@@ -620,6 +695,7 @@
     G.checkTimeout = checkTimeout;
     G.issueHintIfNeeded = issueHintIfNeeded;
     G.showHitAnimation = showHitAnimation;
+    G.isTurnAuthority = isTurnAuthority;
     G.isRevealAuthority = isRevealAuthority;
     G.beginReveal = beginReveal;
     G.finishReveal = finishReveal;

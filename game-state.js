@@ -53,6 +53,7 @@
   G.presence = {};
   G.remoteDrafts = {};
   G.pendingStrokes = {};
+  G.pendingCanvas = null;
   G.localDraft = null;
   G.drawing = false;
   G.lastDraftPublish = 0;
@@ -62,6 +63,8 @@
   G.activePanel = 'chat';
   G.editingInlineDict = null;
   G.handledHitId = null;
+  G.handledRotation = null;
+  G.lastRotationAt = 0;
   G.hitTimer = null;
   G.handledRevealId = null;
   G.wasHitPaused = false;

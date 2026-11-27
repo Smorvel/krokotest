@@ -140,6 +140,7 @@
           state.canvasSeq = (Number(state.canvasSeq) || 0) + 1;
           publishStrokeDeletion(id, state.canvasSeq);
           state.strokes.splice(i, 1);
+          publishCanvasSnapshot();
           publishState();
           scheduleBaseRedraw();
           return;
@@ -157,6 +158,7 @@
       localDraft = null;
       remoteDrafts = {};
       publishDraft(null, true);
+      publishCanvasSnapshot();
       publishState();
       scheduleBaseRedraw();
       scheduleDrafts();
