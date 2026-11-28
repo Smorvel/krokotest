@@ -386,19 +386,23 @@
       if (!state || !client || !client.connected) return;
       var now = Date.now();
       syncPauseSnapshot();
-      cleanState(state, now);
+      /* Проверяем очищенную копию, а не живое состояние: tick не должен
+         менять таймеры и updatedAt и тем самым создавать лишний publish. */
+      var safe = copy(state);
+      cleanState(safe, now);
       applyReactionLock(state);
 
-      var hit = state.hitInfo;
-      if (hit && !state.reveal && now - Number(hit.at || now) > HIT_WATCHDOG_MS) {
-        if (typeof scheduleHitResolution === 'function') scheduleHitResolution(hit);
+      var hit = safe.hitInfo;
+      if (hit && !safe.reveal && now - Number(hit.at || now) > HIT_WATCHDOG_MS &&
+          state.hitInfo && typeof scheduleHitResolution === 'function') {
+        scheduleHitResolution(state.hitInfo);
       }
 
-      var reveal = state.reveal;
-      if (reveal) {
+      var reveal = safe.reveal;
+      if (reveal && state.reveal) {
         var until = Number(reveal.until) || now;
         if (now - until > REVEAL_HARD_GRACE_MS && !reveal.rotatedBy) {
-          if (typeof finishReveal === 'function') finishReveal(reveal, true);
+          if (typeof finishReveal === 'function') finishReveal(state.reveal, true);
         }
       }
 
