@@ -19,6 +19,7 @@
   G.DEFAULT_ROUND_MS = 5 * 60 * 1000;
   G.MAX_ROUND_MS = 60 * 60 * 1000;
   G.HIT_PAUSE_MS = 2400;
+  G.SYSTEM_NOTICE_MS = 4500;
   G.REVEAL_MS = 3600;
   G.TIMEOUT_REVEAL_MS = 3000;
   G.LEAVE_REVEAL_MS = 3000;
@@ -180,6 +181,7 @@
     banList: document.getElementById('banList'),
     blacklistBlock: document.getElementById('blacklistBlock'),
     messages: document.getElementById('messages'),
+    systemFeed: document.getElementById('systemFeed'),
     chatForm: document.getElementById('chatForm'),
     chatInput: document.getElementById('chatInput'),
     settingsRoomName: document.getElementById('settingsRoomName'),
