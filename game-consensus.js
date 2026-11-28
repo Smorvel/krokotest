@@ -133,10 +133,38 @@
       return 0;
     }
 
+    /* Пока настоящий художник виден и соединён, никто не может забрать у него
+       ход посреди раунда. Законная смена приходит только с новым раундом или
+       паузой/уходом; всё остальное — задержанная или чужая копия. */
+    function guardActiveDrawer(local, incoming, ctx) {
+      if (!local || !incoming || !ctx || !ctx.visibleDrawer) return false;
+      var localDrawer = String(local.drawer || '');
+      if (!localDrawer || String(incoming.drawer || '') === localDrawer) return false;
+      if (Number(incoming.round) !== Number(local.round)) return false;
+      if (incoming.reveal || incoming.hitInfo) return false;
+      return true;
+    }
+
+    /* Возвращаем чужую копию в наш раунд, но сохраняем все остальные данные
+       (чат, очки, реакции). Рев повышаем, чтобы эта копия победила у всех. */
+    function sanitizeDrawer(local, incoming) {
+      var copy = Object.assign({}, incoming);
+      copy.drawer = local.drawer;
+      copy.queue = (local.queue || []).slice();
+      copy.bg = local.bg;
+      copy.bgBy = local.bgBy;
+      copy.rev = Math.max(Number(incoming.rev) || 0, Number(local.rev) || 0) + 1;
+      copy.updatedBy = String(local.updatedBy || local.drawer || '');
+      copy.updatedAt = Date.now();
+      return copy;
+    }
+
     G.consensusHash = hash32;
     G.consensusPick = pick;
     G.consensusWeightedDrawerId = weighted;
     G.consensusResolveDrawer = resolveDrawer;
     G.consensusCompareState = compareState;
+    G.consensusGuardActiveDrawer = guardActiveDrawer;
+    G.consensusSanitizeDrawer = sanitizeDrawer;
   }
 })(window.KROKO_GAME);
