@@ -75,7 +75,7 @@
       state.pausedUntil = 0;
     }
 
-    function normalizeReveal(raw) {
+    function normalizeReveal(raw, state) {
       if (!raw || typeof raw !== 'object') return null;
       var value = {
         id: String(raw.id || ''),
@@ -94,8 +94,20 @@
       };
       if (!value.id || !value.word || !value.until) return null;
       /* Просроченное раскрытие ещё нужно, чтобы завершить раунд. Раньше оно
-       выбрасывалось сразу после until, поэтому состояние застывало на 0. */
-      if (!value.until || value.until < Date.now() - 30000) return null;
+       выбрасывалось сразу после until, поэтому состояние застывало на 0.
+       При сдвиге часов until может быть «давним», хотя пауза только началась:
+       сверяемся с локальной привязкой из consensus. */
+      var mapped = 0;
+      if (typeof consensusLocalRevealUntil === 'function' && state) {
+        mapped = consensusLocalRevealUntil({
+          reveal: { id: value.id, until: value.until },
+          updatedAt: Number(state.updatedAt) || 0
+        });
+      }
+      var known = typeof consensusClockKnown === 'function' && consensusClockKnown(state);
+      if (!value.until) return null;
+      if (!mapped && known) return null;
+      if (mapped && mapped < Date.now() - 30000 && value.until < Date.now() - 30000) return null;
       return value;
     }
 
@@ -199,8 +211,8 @@
       s.drawer = typeof s.drawer === 'string' ? s.drawer : '';
       s.pausedUntil = Number(s.pausedUntil) || 0;
       s.hitInfo = s.hitInfo && typeof s.hitInfo === 'object' ? s.hitInfo : null;
-      s.reveal = normalizeReveal(s.reveal);
-      s.lastWord = normalizeReveal(s.lastWord);
+      s.reveal = normalizeReveal(s.reveal, s);
+      s.lastWord = normalizeReveal(s.lastWord, s);
       s.hintSent = !!s.hintSent;
       var hintStage = Number(s.hintStage);
       s.hintStage = isFinite(hintStage) ? Math.max(0, Math.min(3, Math.round(hintStage))) : 0;
@@ -333,7 +345,11 @@
         incoming.guessedWords = guesses;
 
         var restoredPause = false;
-        if (previous.reveal && Number(previous.reveal.until) > Date.now() - 30000 && !incoming.reveal) {
+        var previousUntil = typeof consensusLocalRevealUntil === 'function'
+          ? (consensusLocalRevealUntil(previous) || 0)
+          : 0;
+        if (!previousUntil && previous.reveal) previousUntil = Number(previous.reveal.until) || 0;
+        if (previous.reveal && previousUntil > Date.now() - 30000 && !incoming.reveal) {
           incoming.reveal = previous.reveal;
           incoming.hitInfo = null;
           restoredPause = true;
@@ -774,7 +790,11 @@
       /* Ход переводим только владелец хода или игрок, подтвердивший уход
          предыдущего художника. Завершение уже показанного слова — тоже
          законный повод: скрытая вкладка художника не должна блокировать раунд. */
-      var revealReady = !!(state.reveal && Date.now() >= Number(state.reveal.until));
+      var revealUntil = typeof consensusLocalRevealUntil === 'function'
+        ? (consensusLocalRevealUntil(state) || 0)
+        : 0;
+      if (!revealUntil && state.reveal) revealUntil = Number(state.reveal.until) || 0;
+      var revealReady = !!(state.reveal && Date.now() >= revealUntil);
       if (state.drawer && !isDrawer() && !(state.reveal && state.reveal.leave) &&
           !revealReady && !drawerConfirmedGone(state.drawer)) return false;
       if (Date.now() - (Number(lastRotationAt) || 0) < 1500) return false;
