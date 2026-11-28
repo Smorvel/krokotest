@@ -318,6 +318,10 @@
         if (value.at) value.at = number(value.at, now, 0, now + CLOCK_SKEW_MS);
         return true;
       }
+      if (kind.indexOf('reaction/') === 0) {
+        if (paused()) return false;
+        return cleanReactionEvent(value, now);
+      }
       return true;
     }
 
@@ -378,6 +382,18 @@
         if (data.at) data.at = number(data.at, now, 0, now + CLOCK_SKEW_MS);
         return true;
       }
+      if (kind.indexOf('reaction/') === 0) {
+        if (paused() || !cleanReactionEvent(data, now)) return false;
+        var signature = 'e|' + data.id + '|' + data.value + '|' + data.at + '|' + data.by;
+        if (seenReactions[signature]) return false;
+        seenReactions[signature] = now;
+        var owner = data.by || data.id;
+        var recent = (liveChatAt['r:' + owner] || []).filter(function (at) { return now - at < 1000; });
+        if (recent.length >= 5) return false;
+        recent.push(now);
+        liveChatAt['r:' + owner] = recent;
+        return true;
+      }
       return true;
     }
 
@@ -418,6 +434,18 @@
         if (recent.length) liveChatAt[key] = recent;
         else delete liveChatAt[key];
       });
+    }
+
+    function cleanReactionEvent(raw, now) {
+      if (!raw || typeof raw !== 'object') return false;
+      raw.id = text(raw.id, 60);
+      raw.value = raw.value === 'like' || raw.value === 'dislike' ? raw.value : '';
+      raw.lastValue = raw.lastValue === 'like' || raw.lastValue === 'dislike'
+        ? raw.lastValue : raw.value;
+      raw.by = text(raw.by, 40);
+      raw.at = number(raw.at, now, 0, now + CLOCK_SKEW_MS);
+      raw.round = Math.floor(number(raw.round, 0, 0, 1000000000));
+      return !!raw.id;
     }
 
     function systemNoticeKind(value) {
