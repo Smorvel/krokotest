@@ -288,6 +288,11 @@
       var data = K.parse(message);
       if (!data) return;
       if (!guardIncoming(topic, data, packet)) return;
+      /* Длительность раунда и паузы считаем по локальным часам, чтобы сдвиг
+         времени у одного игрока не завершал раунд у всех остальных. */
+      if (topic === K.topic(room, 'state') && typeof consensusNoteStateClock === 'function') {
+        consensusNoteStateClock(data);
+      }
       var metaTopic = K.topic(room, 'meta');
   
       if (topic === metaTopic) {
