@@ -4,6 +4,7 @@
     var connectedOnce = false;
     var metaOwned = false;
     var lastResyncAt = 0;
+    var lastDrawerDefendAt = 0;
     var skipOrphanUntil = 0;
     var ignoreRetainedCanvasUntil = 0;
     var ignoreRetainedPresenceUntil = 0;
@@ -97,6 +98,9 @@
          её мог перезаписать гость, не нашедший комнату в своём списке. */
       if (metaOwned) K.publish(client, K.topic(room, 'meta'), meta, true);
       if (wasConnected && state) {
+        /* После обрыва не даём этой вкладке перехватывать чужой ход, пока не
+           придёт и не будет принято состояние комнаты. */
+        G.turnLockUntil = Date.now() + 20000;
         resyncRoom('переподключение');
       } else {
         scheduleInitialState();
@@ -174,6 +178,7 @@
       if (now - lastResyncAt < 1200) return;
       lastResyncAt = now;
       skipOrphanUntil = now + 15000;
+      G.turnLockUntil = now + 20000;
       resyncPending = true;
       resyncStateSeen = false;
       resyncStartedAt = now;
@@ -346,6 +351,15 @@
         if (resyncPending) resyncStateSeen = true;
         if (state && Number(data.round) < Number(state.round)) return;
         if (state && Number(data.round) > Number(state.round) + 1) return;
+        /* Видимый художник защищает свой ход: чужой клиент после переподключения
+           не может продавить меня монотонным rev и забрать рисование. */
+        var defendDrawer = typeof consensusGuardActiveDrawer === 'function' &&
+          consensusGuardActiveDrawer(state, data, {
+            visibleDrawer: !document.hidden && isDrawer() && !!client && client.connected
+          });
+        if (defendDrawer && typeof consensusSanitizeDrawer === 'function') {
+          data = consensusSanitizeDrawer(state, data);
+        }
         /* Свежесть state определяется монотонной версией и детерминированным
            id автора, а не системными часами. Иначе при разнице часов два
            клиента навсегда остаются при разных ведущих. */
@@ -430,6 +444,13 @@
         if (state.reveal) scheduleRevealResolution(state.reveal);
         if (state.hitInfo) scheduleHitResolution(state.hitInfo);
         if (merged.changed) publishState();
+        /* Один раз возвращаем всем свою копию с повышенным rev: гость после
+           переподключения должен принять нашего художника, а не настаивать
+           на своём. */
+        if (defendDrawer && (!lastDrawerDefendAt || Date.now() - lastDrawerDefendAt > 3000)) {
+          lastDrawerDefendAt = Date.now();
+          publishState(true);
+        }
         if (clearAbandonedWaiting()) return;
         if (typeof resumeWaitingRound === 'function') resumeWaitingRound();
         ensureDrawer();
