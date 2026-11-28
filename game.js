@@ -29,6 +29,9 @@
        под холстом и прямо над нижней палитрой. Положение меняется только при
        пересечении порога, без постоянных чтений геометрии. */
     var railHorizontal = null;
+    function isRailHorizontal() {
+      return document.body.classList.contains('rail-horizontal');
+    }
     function alignToolRail() {
       if (!el.toolRail || !el.stage || !el.colorDock) return;
       var horizontal = window.innerWidth < 1100;
@@ -47,6 +50,7 @@
     G.showConnectionOverlay = showConnectionOverlay;
     G.markSynced = markSynced;
     G.alignToolRail = alignToolRail;
+    G.isRailHorizontal = isRailHorizontal;
 
     var periodicTick = 0;
     setInterval(function () {
