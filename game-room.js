@@ -466,6 +466,43 @@
       return !state.drawer;
     }
 
+    /* Реакции идут отдельным retained-событием: иначе лайк/дизлайк ждёт,
+       пока держатель state решит опубликовать очередь, и на медленном канале
+       выглядит как «ужасно опаздывает». */
+    function publishReactionEvent(id, value, previous) {
+      if (sessionKicked || !state || !client || !client.connected || !id) return;
+      var next = value === 'like' || value === 'dislike' ? value : '';
+      K.publish(client, K.topic(room, 'reaction/' + id), {
+        id: String(id),
+        value: next,
+        lastValue: next || (previous === 'like' || previous === 'dislike' ? previous : ''),
+        by: myId,
+        at: Date.now(),
+        round: Number(state.round) || 1
+      }, true);
+    }
+
+    function applyReactionEvent(data) {
+      if (!state || !data || !data.id) return false;
+      if (state.hitInfo || state.reveal) return false;
+      var id = String(data.id);
+      var value = data.value === 'like' || data.value === 'dislike' ? data.value : '';
+      var at = Number(data.at) || 0;
+      var old = state.reactions[id];
+      if (old && Number(old.at) > at) return false;
+      var last = value ||
+        (data.lastValue === 'like' || data.lastValue === 'dislike' ? data.lastValue : '') ||
+        (old && (old.lastValue || old.value)) || '';
+      state.reactions[id] = {
+        value: value,
+        lastValue: last,
+        by: typeof data.by === 'string' ? data.by : '',
+        at: at || Date.now()
+      };
+      if (typeof renderMessages === 'function') renderMessages(true);
+      return true;
+    }
+
     function publishState(force) {
       /* Лидер завершения паузы может не быть ни художником, ни создателем.
          После перевода хода он теряет обычное право публикации, но последнюю
@@ -1319,6 +1356,8 @@
     G.applyCanvasSnapshot = applyCanvasSnapshot;
     G.applyStrokeEvent = applyStrokeEvent;
     G.systemMessage = systemMessage;
+    G.publishReactionEvent = publishReactionEvent;
+    G.applyReactionEvent = applyReactionEvent;
     G.rotateDrawer = rotateDrawer;
     G.checkTimeout = checkTimeout;
     G.resumeWaitingRound = resumeWaitingRound;
