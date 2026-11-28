@@ -1187,13 +1187,6 @@
       if (!isDrawer() && G.turnLockUntil && Date.now() < G.turnLockUntil) return;
       if (!isDrawer() && typeof isSyncPending === 'function' && isSyncPending()) return;
       var solo = soloRoom();
-      /* В компании ждём медленный retained-presence. В одиночке — только
-         короткий срок доставки, после чего ход берётся сразу. */
-      var graceUntil = solo && subscribedAt
-        ? Math.min(presenceReadyAt || Infinity, subscribedAt + SOLO_GRACE_MS)
-        : presenceReadyAt;
-      if (state.drawer && graceUntil && Date.now() < graceUntil) return;
-      if (!isTurnAuthority()) return;
       var active = activePeers();
       var players = active.concat(active.some(function (p) { return p.id === myId; })
         ? []
@@ -1202,17 +1195,35 @@
       var ids = players.map(function (p) { return p.id; });
       var drawerPresent = !!state.drawer && (state.drawer === myId ||
         active.some(function (p) { return p.id === state.drawer; }));
+      var drawerRecord = presence[state.drawer];
+      var drawerLiveHere = !!drawerRecord && !drawerRecord.retained &&
+        (Number(drawerRecord.receivedAt) || Number(drawerRecord.seenAt) || 0) > subscribedAt;
+      /* В компании ждём медленный retained-presence. Короткий solo-таймер
+         нельзя применять к унаследованному чужому ходу, иначе второй игрок
+         заберёт рисование у ведущего ещё до доставки его presence. */
+      var fastGrace = solo && subscribedAt
+        ? Math.min(presenceReadyAt || Infinity, subscribedAt + SOLO_GRACE_MS)
+        : presenceReadyAt;
+      var graceUntil = typeof consensusNeedsFullTurnGrace === 'function' &&
+        consensusNeedsFullTurnGrace(state, {
+          myId: myId,
+          drawerPresent: drawerPresent,
+          drawerLiveHere: drawerLiveHere,
+          drawerOffline: !!drawerOfflineAt,
+          drawerMissingSince: drawerMissingSince
+        }) ? presenceReadyAt : fastGrace;
+      if (state.drawer && graceUntil && Date.now() < graceUntil) return;
+      if (!isTurnAuthority()) return;
 
       if (state.reveal || state.lastWord) return;
       if (solo) {
         if (drawerPresent && state.drawer === myId) return;
         /* Если ведущий был жив в этой сессии и ушёл, показываем слово и даём
            короткую паузу. Унаследованную пустую комнату запускаем сразу. */
-        var info = state.drawer && presence[state.drawer];
-        var seenHere = info && (Number(info.receivedAt) || Number(info.seenAt) || 0) > subscribedAt;
+        /* Задержанный retained online:true — не уход. Уход подтверждается
+           только завещанием MQTT или таймаутом отсутствия. */
         var sawLeave = state.drawer && state.drawer !== myId &&
-          (drawerSeenAt > subscribedAt || seenHere || drawerOfflineAt > subscribedAt ||
-            drawerMissingSince > subscribedAt);
+          (drawerOfflineAt > subscribedAt || drawerMissingSince > subscribedAt);
         state.queue = ids;
         state.hitInfo = null;
         state.waitingForPlayers = false;
