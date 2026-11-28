@@ -140,11 +140,13 @@
     var lastVisibleRefreshAt = 0;
     function onVisible() {
       if (document.hidden || !client || !client.connected) return;
-      if (typeof refreshRoom !== 'function') return;
+      if (typeof resyncRoom !== 'function') return;
       var now = Date.now();
       if (now - lastVisibleRefreshAt < 1200) return;
       lastVisibleRefreshAt = now;
-      refreshRoom();
+      /* Возврат после сворачивания — тихая полная сверка: без неё клиент
+         мог остаться при старом drawer и снова начать рисовать. */
+      resyncRoom('возврат в вкладку', true);
       if (typeof clearAbandonedWaiting === 'function') clearAbandonedWaiting();
     }
     function onHidden() {
