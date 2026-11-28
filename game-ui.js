@@ -152,14 +152,14 @@
       var minutes = Number(el.roundMinInput.value);
       if (!isFinite(minutes)) minutes = 5;
       minutes = Math.max(0, Math.min(60, minutes));
-      state.roundMs = Math.round(minutes * 60000);
-      resetRoundTimer();
-      state.waitingForPlayers = false;
-      state.expiredAt = 0;
-      state.hintSent = false;
-      handledStart = 0;
+      /* Текущий раунд не перезапускаем: создатель меняет настройку, а она
+         вступает в силу с начала следующего раунда у всех игроков. */
+      state.pendingRoundMs = Math.round(minutes * 60000);
+      state.pendingRoundMsAt = Date.now();
       el.roundMinInput.value = minutes;
-      systemMessage(state.roundMs ? 'Время раунда: ' + minutes + ' мин.' : 'Время раунда: без ограничений.');
+      systemMessage(state.pendingRoundMs
+        ? 'Время раунда со следующего раунда: ' + minutes + ' мин.'
+        : 'Время раунда со следующего раунда: без ограничений.');
       publishState();
       renderAll();
     });

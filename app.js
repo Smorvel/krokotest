@@ -302,13 +302,14 @@
 
   /* Полоса появляется только во время прокрутки. Наведение на саму полосу
      оформляется CSS (::-webkit-scrollbar-thumb:hover): чат при наведении
-     ничего не подсвечивает. Программная прокрутка не создаёт класс. */
+     ничего не подсвечивает. Никаких getComputedStyle на каждое колесо — только
+     один дешёвый класс на нужный контейнер. */
   function installScrollbarVisibility() {
     var active = null;
     var timer = null;
 
-    function show(el) {
-      var node = el && el.nodeType === 1 ? el : document.documentElement;
+    function show(node) {
+      node = node && node.nodeType === 1 ? node : document.documentElement;
       if (active && active !== node) active.classList.remove('scrolling');
       active = node;
       node.classList.add('scrolling');
@@ -321,17 +322,11 @@
 
     function onGesture(event) {
       if (event.defaultPrevented) return;
-      var el = event.target && event.target.nodeType === 1 ? event.target : document.body;
-      while (el && el !== document.documentElement) {
-        var style = window.getComputedStyle(el);
-        if ((style.overflowY === 'auto' || style.overflowY === 'scroll') &&
-            el.scrollHeight > el.clientHeight + 2) {
-          show(el);
-          return;
-        }
-        el = el.parentElement;
-      }
-      show(document.documentElement);
+      var target = event.target && event.target.nodeType === 1 ? event.target : null;
+      var scroller = target && target.closest
+        ? target.closest('.messages, .players, .settings-scroll')
+        : null;
+      show(scroller || document.documentElement);
     }
 
     document.addEventListener('wheel', onGesture, { passive: true });

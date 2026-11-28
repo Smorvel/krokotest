@@ -184,14 +184,18 @@
       el.roomBadge.hidden = !isCreator();
       el.settingsRoomName.textContent = (meta && meta.name) || room;
       el.roundMinInput.disabled = !isCreator();
+      var hasPendingTime = !!(state && Number(state.pendingRoundMsAt));
       el.settingsNote.textContent = isCreator()
-        ? 'Вы создатель комнаты: можно менять словари и время раунда.'
+        ? (hasPendingTime
+          ? 'Новое время раунда начнёт действовать со следующего раунда.'
+          : 'Вы создатель комнаты: можно менять словари и время раунда.')
         : 'Сменять словари и время может только создатель комнаты.';
       el.dictNote.textContent = isCreator()
         ? 'Изменения начнут действовать со следующего раунда.'
         : 'Словари выбирает создатель комнаты.';
       var currentRoundMs = state && typeof state.roundMs === 'number' ? state.roundMs : DEFAULT_ROUND_MS;
-      var minutes = Math.round(currentRoundMs / 60000 * 10) / 10;
+      var shownRoundMs = hasPendingTime ? Number(state.pendingRoundMs) || 0 : currentRoundMs;
+      var minutes = Math.round(shownRoundMs / 60000 * 10) / 10;
       if (document.activeElement !== el.roundMinInput) el.roundMinInput.value = minutes;
       el.disableHintsInput.checked = !!(state && state.hintsDisabled);
       el.disableHintsInput.disabled = !isCreator();
@@ -240,6 +244,7 @@
       renderTimer();
       scheduleBaseRedraw();
       scheduleDrafts();
+      if (typeof updateSounds === 'function') updateSounds();
       if (state && client && client.connected && !syncDone && typeof markSynced === 'function') markSynced();
     }
   

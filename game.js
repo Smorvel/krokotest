@@ -109,6 +109,7 @@
         issueHintIfNeeded();
         renderWord();
         renderReveal();
+        if (typeof updateSounds === 'function') updateSounds();
       }
     }, 1000);
 

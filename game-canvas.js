@@ -126,23 +126,48 @@
     canvas.addEventListener('pointerleave', function () { if (!drawing) el.cursor.hidden = true; });
 
     var sizeToastTimer = null;
+    var sizeToastAnimation = null;
+    var sizeToastRect = null;
+    var sizeToastLift = 16;
     /* Подсказка привязана к курсору-кисти: следует за мышью и висит сразу
-       над кружком выбранного размера. */
+       над кружком выбранного размера. Позиция считается через transform,
+       чтобы Movement мыши не вызывал пересчёт layout. */
     function placeSizeToast(event) {
-      if (!el.sizeToast || !el.wrap) return;
-      var rect = el.wrap.getBoundingClientRect();
-      var brush = el.cursor && !el.cursor.hidden ? el.cursor.offsetHeight : 0;
-      var lift = Math.max(16, Math.round(brush / 2) + 8);
-      el.sizeToast.style.left = Math.round(event.clientX - rect.left) + 'px';
-      el.sizeToast.style.top = Math.max(16, Math.round(event.clientY - rect.top - lift)) + 'px';
+      if (!el.sizeToast || !event) return;
+      var rect = sizeToastRect || (el.wrap && el.wrap.getBoundingClientRect());
+      if (!rect) return;
+      var x = Math.round(event.clientX - rect.left);
+      var y = Math.max(16, Math.round(event.clientY - rect.top - sizeToastLift));
+      el.sizeToast.style.transform = 'translate3d(' + x + 'px,' + y + 'px,0) translate(-50%, -100%)';
     }
     function showSizeToast(event, size) {
       if (!el.sizeToast) return;
-      el.sizeToast.textContent = size + 'px';
+      var toast = el.sizeToast;
+      toast.textContent = size + 'px';
+      sizeToastRect = el.wrap ? el.wrap.getBoundingClientRect() : null;
+      var brush = el.cursor && !el.cursor.hidden ? el.cursor.offsetHeight : 0;
+      sizeToastLift = Math.max(16, Math.round(brush / 2) + 8);
       placeSizeToast(event);
-      el.sizeToast.hidden = false;
+      toast.hidden = false;
       if (sizeToastTimer) clearTimeout(sizeToastTimer);
-      sizeToastTimer = setTimeout(function () { el.sizeToast.hidden = true; }, 2000);
+      if (sizeToastAnimation) sizeToastAnimation.cancel();
+      if (typeof toast.animate === 'function') {
+        /* Анимация только прозрачности идёт на композитном слое и не вызывает
+           пересчёт layout при движении мыши. */
+        sizeToastAnimation = toast.animate(
+          [{ opacity: 1 }, { opacity: 0 }],
+          { duration: 1000, easing: 'linear', fill: 'forwards' }
+        );
+      } else {
+        toast.style.opacity = '1';
+      }
+      sizeToastTimer = setTimeout(function () {
+        toast.hidden = true;
+        if (sizeToastAnimation) sizeToastAnimation.cancel();
+        sizeToastAnimation = null;
+        toast.style.opacity = '';
+        sizeToastRect = null;
+      }, 1000);
     }
 
     canvas.addEventListener('wheel', function (event) {

@@ -55,6 +55,9 @@
   G.state = null;
   G.meta = null;
   G.stateSeen = false;
+  G.retainedTopics = {};
+  G.orphanCheckTimer = null;
+  G.ignoreRetainedMetaUntil = 0;
   G.subscribedAt = 0;
   G.presenceReadyAt = 0;
   G.initialStateTimer = null;

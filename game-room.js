@@ -125,6 +125,12 @@
       s.startedAt = Number(s.startedAt) || Date.now();
       var roundMs = Number(s.roundMs);
       s.roundMs = isFinite(roundMs) && roundMs >= 0 && roundMs <= MAX_ROUND_MS ? roundMs : DEFAULT_ROUND_MS;
+      /* Смена длительности в настройках вступает в силу только со следующего
+         раунда: текущий таймер и подсказки живут по старому значению. */
+      var pendingRoundMs = Number(s.pendingRoundMs);
+      s.pendingRoundMs = isFinite(pendingRoundMs) && pendingRoundMs >= 0 && pendingRoundMs <= MAX_ROUND_MS
+        ? pendingRoundMs : 0;
+      s.pendingRoundMsAt = Number(s.pendingRoundMsAt) || 0;
       s.deadline = Number(s.deadline) || 0;
       s.remainingMs = Number(s.remainingMs) || 0;
       /* Общее состояние никогда не несёт рисунок и его версию. Источник
@@ -340,6 +346,16 @@
             incoming.remainingMs = Number(previous.remainingMs) || 0;
             changed = true;
           }
+        }
+        /* Отложенная смена длительности — часть настроек комнаты. Берём её
+           только с более свежей меткой, иначе задержанный state отбросит
+           настройку создателя. */
+        var pendingAt = Number(incoming.pendingRoundMsAt) || 0;
+        var previousPendingAt = Number(previous.pendingRoundMsAt) || 0;
+        if (previousPendingAt > pendingAt) {
+          incoming.pendingRoundMs = Number(previous.pendingRoundMs) || 0;
+          incoming.pendingRoundMsAt = previousPendingAt;
+          changed = true;
         }
       }
       return { state: incoming, changed: changed };
@@ -711,6 +727,13 @@
       var endingAt = state.startedAt;
       chooseNextWord();
       state.round += 1;
+      /* Настройка длительности, сделанная во время раунда, применяется здесь:
+         новый раунд начинается уже с новым временем у всех игроков. */
+      if (Number(state.pendingRoundMsAt)) {
+        state.roundMs = Number(state.pendingRoundMs) || 0;
+        state.pendingRoundMs = 0;
+        state.pendingRoundMsAt = 0;
+      }
       resetRoundTimer();
       Object.keys(rasterImages).forEach(function (id) { delete rasterImages[id]; });
       Object.keys(rasterBgCache).forEach(function (id) { delete rasterBgCache[id]; });

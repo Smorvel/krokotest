@@ -62,6 +62,7 @@
       presenceReadyAt = subscribedAt + 15000;
       publishPresence(true);
       scheduleInitialState();
+      scheduleOrphanCheck();
       /* Пустая комната должна начать рисунок быстро, но retained-presence
          успевает прийти: повторяем проверку хода после короткого окна. */
       setTimeout(function () {
@@ -155,11 +156,18 @@
 
     client.on('message', function (topic, message, packet) {
       if (sessionKicked) return;
+      if (packet && packet.retain && message && message.length &&
+          topic.indexOf(K.topic(room, '')) === 0) {
+        retainedTopics[topic] = true;
+      }
       var data = K.parse(message);
       if (!data) return;
       var metaTopic = K.topic(room, 'meta');
   
       if (topic === metaTopic) {
+        /* После очистки заброшенной комнаты старый retained-meta не должен
+           вернуть чужого создателя раньше, чем создастся новое состояние. */
+        if (packet && packet.retain && Date.now() < ignoreRetainedMetaUntil) return;
         meta = data;
         applyMeta();
         return;
@@ -373,6 +381,65 @@
       }
     });
   
+    /* Комната без живых игроков — не архив: retained-состояние, холст и слово
+       от прошлой сессии должны исчезнуть, иначе пустая комната открывается
+       со старым рисунком и старой плашкой слова. */
+    function clearOrphanedRoom() {
+      if (client && client.connected) {
+        Object.keys(retainedTopics).forEach(function (topic) {
+          client.publish(topic, '', { qos: 1, retain: true });
+        });
+      }
+      retainedTopics = {};
+      ignoreRetainedMetaUntil = Date.now() + 5000;
+      state = null;
+      meta = null;
+      stateSeen = false;
+      canvasSeen = false;
+      pendingCanvas = null;
+      canvasRound = 0;
+      canvasVersion = 0;
+      canvasOwner = '';
+      pendingStrokes = {};
+      futureStrokes = {};
+      futureDeletions = {};
+      deletedStrokes = {};
+      seenChatIds = {};
+      remoteDrafts = {};
+      localDraft = null;
+      drawing = false;
+      handledStart = 0;
+      handledHitId = null;
+      handledRotation = null;
+      handledRevealId = null;
+      drawerMissingSince = 0;
+      drawerOfflineAt = 0;
+      publishPresence(true);
+      renderAll();
+      scheduleInitialState();
+    }
+
+    function scheduleOrphanCheck() {
+      if (orphanCheckTimer) clearTimeout(orphanCheckTimer);
+      orphanCheckTimer = setTimeout(function () {
+        orphanCheckTimer = null;
+        if (sessionKicked || !client.connected || !subscribedAt) return;
+        if (activePeers().length) return;
+        /* Медленный брокер может прислать retained-состояние позже. Пока оно
+           не пришло и окно синхронизации не закрылось, ждём. */
+        if (!stateSeen && !canvasSeen && !pendingCanvas &&
+            Date.now() - subscribedAt < 15000) {
+          scheduleOrphanCheck();
+          return;
+        }
+        var oldState = !!(state && Number(state.updatedAt) &&
+          Number(state.updatedAt) < subscribedAt - 500);
+        var oldCanvas = !state && (stateSeen || canvasSeen || !!pendingCanvas);
+        if (!oldState && !oldCanvas) return;
+        clearOrphanedRoom();
+      }, 1000);
+    }
+
     function createInitialState() {
       ensureMeta();
       var peers = activePeers();
@@ -430,13 +497,14 @@
           scheduleInitialState();
           return;
         }
-        /* Комнату создаёт самый ранний из присутствующих. Позже вошедший игрок
-           ждёт дольше и не пересоздаёт чужую комнату: именно преждевременный
-           createInitialState обнулял холст у ведущего. */
-        if (meta && (meta.creatorId || meta.creatorFingerprint) && !isCreator()) return;
         /* Retained-presence с прошедшим ts не считается живым игроком: иначе
            пустая комната ждёт 12 секунд и выбирает Drawer-призрака. */
         var peers = activePeers();
+        /* Комнату создаёт самый ранний из присутствующих. Позже вошедший игрок
+           ждёт дольше и не пересоздаёт чужую комнату: именно преждевременный
+           createInitialState обнулял холст у ведущего. Заброшенную комнату
+           вправе пересоздать первый пришедший игрок. */
+        if (peers.length && meta && (meta.creatorId || meta.creatorFingerprint) && !isCreator()) return;
         var first = !peers.length || peers.every(function (p) {
           return (Number(p.joinedAt) || 0) >= sessionJoinedAt;
         });
