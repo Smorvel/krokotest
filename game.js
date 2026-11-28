@@ -111,7 +111,11 @@
     }, 5000);
 
     setInterval(function () {
-      if (sessionKicked || document.hidden) return;
+      if (sessionKicked) return;
+      /* Страж работает и в скрытой вкладке: иначе замерший лидер мог бы
+         заблокировать раунд для всех остальных. */
+      guardTick();
+      if (document.hidden) return;
       if (client && client.connected) renderTimer();
       if (state) {
         issueHintIfNeeded();
