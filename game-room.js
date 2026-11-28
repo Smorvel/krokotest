@@ -760,6 +760,10 @@
       var rotationToken = Number(state.round) + ':' + Number(state.startedAt) + ':' +
         Number(state.wordIndex) + ':' + String(state.drawer || '');
       if (handledRotation === rotationToken) return false;
+      /* Клиент, который только что переподключился, не переводит чужой ход
+         посреди раунда: иначе свёрнутый iPhone забирал рисование у автора. */
+      if (state.drawer && !isDrawer() && !state.reveal &&
+          G.turnLockUntil && Date.now() < G.turnLockUntil) return false;
       /* Ход переводим только владелец хода или игрок, подтвердивший уход
          предыдущего художника. Завершение уже показанного слова — тоже
          законный повод: скрытая вкладка художника не должна блокировать раунд. */
@@ -1050,6 +1054,9 @@
     function isTurnAuthority() {
       if (!state) return false;
       if (isDrawer()) return true;
+      /* Сверка после переподключения/возврата в вкладку не даёт прав на ход. */
+      if (G.turnLockUntil && Date.now() < G.turnLockUntil) return false;
+      if (typeof isSyncPending === 'function' && isSyncPending()) return false;
       if (state.reveal && state.reveal.leave) return true;
       if (!drawerConfirmedGone()) return false;
       return presentPlayers().some(function (p) { return p.id === myId; });
@@ -1177,6 +1184,8 @@
 
     function ensureDrawer() {
       if (document.hidden || !state || state.waitingForPlayers) return;
+      if (!isDrawer() && G.turnLockUntil && Date.now() < G.turnLockUntil) return;
+      if (!isDrawer() && typeof isSyncPending === 'function' && isSyncPending()) return;
       var solo = soloRoom();
       /* В компании ждём медленный retained-presence. В одиночке — только
          короткий срок доставки, после чего ход берётся сразу. */
