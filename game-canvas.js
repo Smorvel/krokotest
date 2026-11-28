@@ -171,6 +171,9 @@
     }
 
     canvas.addEventListener('wheel', function (event) {
+      /* Нижний режим (<1100px): страница прокручивается обычным колесом,
+         размер кисти меняется только перетаскиванием кружка или палитрой. */
+      if ((typeof isRailHorizontal === 'function' && isRailHorizontal()) || window.innerWidth < 1100) return;
       if (!isDrawer() || isBannedMe()) return;
       event.preventDefault();
       var next = setKnobValue('size', tool.size + (event.deltaY < 0 ? 2 : -2));
