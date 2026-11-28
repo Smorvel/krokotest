@@ -103,6 +103,7 @@
       }
       if (state && state.hitInfo) scheduleHitResolution(state.hitInfo);
       if (state && state.reveal && Number(state.reveal.until) <= Date.now()) finishReveal(state.reveal);
+      if (state && typeof resumeWaitingRound === 'function') resumeWaitingRound();
       if (state) ensureDrawer();
       checkTimeout();
       issueHintIfNeeded();
@@ -116,6 +117,7 @@
         issueHintIfNeeded();
         renderWord();
         renderReveal();
+        renderSystemFeed();
         if (typeof updateSounds === 'function') updateSounds();
       }
     }, 1000);
