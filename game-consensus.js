@@ -155,6 +155,10 @@
       if (delta === 1) {
         var author = String(incoming.updatedBy || incoming.drawer || '');
         if (author === localDrawer) return false;
+        /* Пауза уже объявила лидера завершения: такой новый раунд законен,
+           даже если его публикует не сам художник (скрытая вкладка ведущего
+           не должна блокировать смену хода). */
+        if (local.reveal && local.reveal.rotatedBy) return false;
         if (Array.isArray(incoming.bans) && incoming.bans.indexOf(localDrawer) >= 0) return false;
         return true;
       }
