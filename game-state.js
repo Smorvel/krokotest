@@ -150,6 +150,8 @@
     drawerAvatar: document.getElementById('drawerAvatar'),
     timer: document.getElementById('timerText'),
     wrap: document.getElementById('canvasWrap'),
+    stage: document.querySelector('.stage'),
+    colorDock: document.querySelector('.color-dock'),
     cursor: document.getElementById('brushCursor'),
     hitToast: document.getElementById('hitToast'),
     wordReveal: document.getElementById('wordReveal'),
