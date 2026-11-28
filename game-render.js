@@ -39,19 +39,51 @@
       return !!(message && message.round && state && state.round && Number(message.round) < Number(state.round));
     }
 
-    var renderedSystemIds = '';
+    var systemNoticeNodes = {};
     function renderSystemFeed() {
       if (!el.systemFeed || !state) return;
       var now = Date.now();
       var events = (state.systemEvents || []).filter(function (event) {
         return event && event.text && now - (Number(event.at) || 0) < SYSTEM_NOTICE_MS;
       }).slice(-4);
-      var ids = events.map(function (event) { return event.id; }).join(',');
-      if (ids === renderedSystemIds) return;
-      renderedSystemIds = ids;
-      el.systemFeed.innerHTML = events.map(function (event) {
-        return '<div class="system-notice">' + K.escapeHtml(event.text) + '</div>';
-      }).join('');
+      var liveIds = {};
+      events.forEach(function (event) { liveIds[event.id] = true; });
+
+      /* Держим уже показанные плашки в DOM до конца анимации ухода, чтобы
+         смена набора событий не обрывала её мгновенной перерисовкой. */
+      events.forEach(function (event) {
+        var node = systemNoticeNodes[event.id];
+        if (!node || !node.parentNode) {
+          node = document.createElement('div');
+          node.className = 'system-notice';
+          node.textContent = event.text;
+          systemNoticeNodes[event.id] = node;
+        }
+        if (node.leaveTimer) {
+          clearTimeout(node.leaveTimer);
+          node.leaveTimer = null;
+        }
+        node.classList.remove('leaving');
+      });
+
+      var wanted = events.map(function (event) { return systemNoticeNodes[event.id]; });
+      var children = Array.prototype.slice.call(el.systemFeed.children);
+      for (var i = 0; i < wanted.length; i += 1) {
+        if (children[i] !== wanted[i]) {
+          el.systemFeed.insertBefore(wanted[i], children[i] || null);
+        }
+      }
+
+      Object.keys(systemNoticeNodes).forEach(function (id) {
+        if (liveIds[id]) return;
+        var node = systemNoticeNodes[id];
+        if (!node || !node.parentNode || node.classList.contains('leaving')) return;
+        node.classList.add('leaving');
+        node.leaveTimer = setTimeout(function () {
+          if (node.parentNode) node.parentNode.removeChild(node);
+          delete systemNoticeNodes[id];
+        }, SYSTEM_NOTICE_EXIT_MS);
+      });
     }
 
     function reactionMarkup(message) {
@@ -245,7 +277,7 @@
     }
 
     function renderTimer() {
-      if (!state) return;
+      if (!state) { el.timer.textContent = '--:--'; return; }
       var pausedNow = isHitPaused() || !!state.reveal;
       if (wasHitPaused && !pausedNow) renderTools();
       wasHitPaused = pausedNow;
