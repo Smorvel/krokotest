@@ -349,7 +349,11 @@
            эта копия старше локальной и будет отклонена ниже. Иначе скрытая
            вкладка висела в «синхронизации» до вечного таймаута. */
         if (resyncPending) resyncStateSeen = true;
-        if (state && Number(data.round) < Number(state.round)) return;
+        /* Подписанная поправка живого ведущего возвращает перехватчик в его
+           раунд, даже если тот уже успел увеличить номер раунда у себя. */
+        if (state && Number(data.round) < Number(state.round) &&
+            !(typeof consensusAcceptsSignedDefense === 'function' &&
+              consensusAcceptsSignedDefense(state, data))) return;
         if (state && Number(data.round) > Number(state.round) + 1) return;
         /* Видимый художник защищает свой ход: чужой клиент после переподключения
            не может продавить меня монотонным rev и забрать рисование. */
