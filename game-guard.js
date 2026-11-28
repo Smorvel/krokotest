@@ -115,6 +115,7 @@
       state.pausedUntil = number(state.pausedUntil, 0, 0, now + HIT_PAUSE_MS);
       state.updatedAt = number(state.updatedAt, now, 0, now);
       state.updatedBy = text(state.updatedBy, 40);
+      state.rev = Math.round(number(state.rev, 0, 0, 1000000000));
 
       state.messages = Array.isArray(state.messages)
         ? state.messages.slice(-50).map(function (message) { return cleanMessage(message, now); }).filter(Boolean)
