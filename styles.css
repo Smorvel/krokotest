@@ -184,21 +184,18 @@ textarea { resize: vertical; }
   .game-shell { height: 100vh; min-height: 0; max-height: 100vh; overflow: hidden; }
 }
 
-/* Тонкая панель кистей стоит в своей колонке рядом с холстом и липнет к
-   верху при прокрутке. Если кнопки не помещаются по высоте, они расклады-
-   ваются во второй столбец; скроллбара и обрезанных кнопок нет. */
+/* Тонкая панель кистей: всегда одна колонка слева от холста, без сжатия
+   в два столбца. На экране уже 1100px она уходит под холст и становится
+   горизонтальным рядом прямо над нижней палитрой. */
 .tool-rail {
   position: sticky;
   top: 8px;
   align-self: start;
   z-index: 40;
-  display: grid;
-  grid-template-columns: repeat(var(--rail-cols, 1), 34px);
-  grid-template-rows: repeat(var(--rail-rows, 9), auto);
-  grid-auto-flow: column;
-  align-content: start;
-  justify-content: center;
-  gap: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
   width: max-content;
   padding: 6px 5px;
   overflow: hidden;
@@ -206,12 +203,31 @@ textarea { resize: vertical; }
   border-radius: var(--radius);
   background: var(--surface);
 }
+.tool-rail.rail-horizontal {
+  position: static;
+  align-self: stretch;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  gap: 5px;
+  padding: 5px 6px;
+  margin: 10px 0 0;
+}
+.rail-horizontal .rail-sep { width: 1px; height: 30px; align-self: center; }
+.rail-horizontal .rail-control { width: 32px; gap: 0; }
+.rail-horizontal .tool-btn,
+.rail-horizontal .pipette-btn,
+.rail-horizontal .toggle-btn { width: 30px; height: 30px; }
+.rail-horizontal .knob { width: 32px; height: 32px; }
+.rail-horizontal .bg-square { width: 32px; height: 32px; }
 .rail-control { display: grid; justify-items: center; gap: 2px; width: 34px; flex: none; }
 .rail-caption { display: none; }
 .rail-bg { flex: none; width: 36px; height: 36px; margin: 0 auto; }
 .recent-title { color: var(--muted); font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; }
-/* Кнопки кистей участвуют в general flex-раскладке панели, поэтому при
-   нехватке высоты они переносятся во второй вертикальный ряд целиком. */
+/* Кнопки кистей участвуют в общей flex-раскладке панели. */
 .tool-grid { display: contents; }
 .tool-btn {
   flex: none;
@@ -685,6 +701,11 @@ textarea { resize: vertical; }
 @media (min-width: 821px) and (min-height: 500px) {
   .canvas-wrap { width: min(100%, 760px, max(280px, calc(100vh - 210px))); }
 }
+/* В узком режиме кисти занимают отдельный горизонтальный ряд между холстом
+   и нижней палитрой, поэтому квадрат уменьшается ещё на высоту этого ряда. */
+@media (min-width: 821px) and (max-width: 1099px) and (min-height: 500px) {
+  .canvas-wrap { width: min(100%, 760px, max(280px, calc(100vh - 270px))); }
+}
 /* Нативный курсор прячем только у рисующего: угадывающий видит обычную стрелку. */
 body.can-draw .canvas-wrap, body.can-draw #drawCanvas { cursor: none; }
 #drawCanvas, #draftCanvas { width: 100%; height: 100%; display: block; }
@@ -992,4 +1013,19 @@ body.can-draw .canvas-wrap, body.can-draw #drawCanvas { cursor: none; }
   .color-dock { flex-wrap: wrap; gap: 10px; }
   .word-block strong { max-width: 100%; font-size: 16px; line-height: 28px; }
   .messages { height: auto; }
+}
+
+/* Ширина страницы меньше 1100px: кисти уже не колонка слева, а горизонтальный
+   ряд под холстом; чат и настройки становятся нижней панелью под игрой. */
+@media (min-width: 821px) and (max-width: 1099px) {
+  body[data-page="game"] { height: auto; overflow: auto; }
+  .game-shell {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+    min-height: 100vh;
+    max-height: none;
+    overflow: visible;
+  }
+  .stage { grid-column: 1; }
+  .side-panel { grid-column: 1; height: 420px; max-height: 420px; }
 }
