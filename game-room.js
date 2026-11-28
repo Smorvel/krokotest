@@ -394,8 +394,12 @@
       return !state.drawer;
     }
 
-    function publishState() {
-      if (sessionKicked || !state || !client || !client.connected || !isStatePublisher()) return;
+    function publishState(force) {
+      /* Лидер завершения паузы может не быть ни художником, ни создателем.
+         После перевода хода он теряет обычное право публикации, но последнюю
+         публикацию нового раунда всё равно должен разослать: иначе остальные
+         останутся на старом раунде с уже показанным словом. */
+      if (sessionKicked || !state || !client || !client.connected || (!force && !isStatePublisher())) return;
       state.updatedAt = Date.now();
       state.updatedBy = myId;
       /* Общее состояние НИКОГДА не несёт рисунок. Единственный источник
@@ -972,7 +976,7 @@
         if (state.reveal.rotatedBy !== myId) return;
         if (!leader && !isRevealLeader() && Date.now() < Number(reveal.until) + 3000) return;
         rotateDrawer(reveal.reason || 'Раунд завершён.', reveal.guesserId);
-        publishState();
+        publishState(true);
         renderAll();
       }, 250);
     }
