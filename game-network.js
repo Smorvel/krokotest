@@ -373,17 +373,26 @@
            эта копия старше локальной и будет отклонена ниже. Иначе скрытая
            вкладка висела в «синхронизации» до вечного таймаута. */
         if (resyncPending) resyncStateSeen = true;
+        var turnLockedNow = !!G.turnLockUntil && Date.now() < G.turnLockUntil;
         /* Подписанная поправка живого ведущего возвращает перехватчик в его
-           раунд, даже если тот уже успел увеличить номер раунда у себя. */
+           раунд, даже если тот уже успел увеличить номер раунда у себя.
+           Но во время сверки после возврата/переподключения старая копия
+           не имеет права откатывать уже начатый другими раунд. */
         if (state && Number(data.round) < Number(state.round) &&
-            !(typeof consensusAcceptsSignedDefense === 'function' &&
-              consensusAcceptsSignedDefense(state, data))) return;
+            (resyncPending || turnLockedNow ||
+             !(typeof consensusAcceptsSignedDefense === 'function' &&
+               consensusAcceptsSignedDefense(state, data)))) return;
         if (state && Number(data.round) > Number(state.round) + 1) return;
         /* Видимый художник защищает свой ход: чужой клиент после переподключения
            не может продавить меня монотонным rev и забрать рисование. */
         var defendDrawer = typeof consensusGuardActiveDrawer === 'function' &&
           consensusGuardActiveDrawer(state, data, {
-            visibleDrawer: !document.hidden && isDrawer() && !!client && client.connected
+            visibleDrawer: !document.hidden && isDrawer() && !!client && client.connected,
+            /* Пока идёт тихая сверка после возврата/переподключения, старый
+               локальный ведущий не защищает свой ход: иначе он забирает
+               рисование у того, кто уже занял его место. */
+            resyncing: !!resyncPending,
+            turnLocked: turnLockedNow
           });
         if (defendDrawer && typeof consensusSanitizeDrawer === 'function') {
           data = consensusSanitizeDrawer(state, data);
