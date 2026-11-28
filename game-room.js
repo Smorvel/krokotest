@@ -1106,24 +1106,25 @@
       return true;
     }
 
-    function finishReveal(reveal) {
+    function finishReveal(reveal, force) {
       if (!state || !state.reveal || state.reveal.id !== reveal.id) return;
       if (Date.now() < Number(reveal.until)) return;
       /* Сначала объявляем всем, кто берёт паузу, и только потом меняем раунд.
          Так два видимых игрока не переведут ход дважды. */
       if (state.reveal.rotatedBy) return;
-      var leader = isRevealLeader();
+      var leader = !force && isRevealLeader();
       /* Если признак скрытой вкладки пришёл с задержкой, через 3 секунды после
-         паузы завершить может любой видимый игрок. */
-      var fallback = visiblePresentPlayers().some(function (p) { return p.id === myId; }) &&
-        Date.now() >= Number(reveal.until) + 3000;
+         паузы завершить может любой видимый игрок. Страж-room может завершить
+         застрявшую паузу принудительно, даже если все остальные скрыты. */
+      var fallback = force || (visiblePresentPlayers().some(function (p) { return p.id === myId; }) &&
+        Date.now() >= Number(reveal.until) + 3000);
       if (!leader && !fallback) return;
       state.reveal.rotatedBy = myId;
       publishState();
       setTimeout(function () {
         if (!state || !state.reveal || state.reveal.id !== reveal.id) return;
         if (state.reveal.rotatedBy !== myId) return;
-        if (!leader && !isRevealLeader() && Date.now() < Number(reveal.until) + 3000) return;
+        if (!force && !leader && !isRevealLeader() && Date.now() < Number(reveal.until) + 3000) return;
         rotateDrawer(reveal.reason || 'Раунд завершён.', reveal.guesserId);
         publishState(true);
         renderAll();
