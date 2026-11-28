@@ -400,7 +400,7 @@
       }
 
       var reveal = safe.reveal;
-      if (reveal && state.reveal) {
+      if (reveal && state.reveal && !document.hidden) {
         var until = Number(reveal.until) || now;
         if (now - until > REVEAL_HARD_GRACE_MS && !reveal.rotatedBy) {
           if (typeof finishReveal === 'function') finishReveal(state.reveal, true);
