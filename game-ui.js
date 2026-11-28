@@ -85,6 +85,7 @@
         by: next ? myId : '',
         at: Date.now()
       };
+      if (typeof publishReactionEvent === 'function') publishReactionEvent(id, next, old.value || old.lastValue || '');
       publishState();
       /* Сохраняем позицию чата: снятие лайка не должно дёргать сам скролл,
          в том числе когда вернётся наше же состояние из MQTT. */
