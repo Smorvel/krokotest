@@ -126,14 +126,29 @@
     renderToolsOnce();
     applyMeta();
     alignToolRail();
-    /* Возврат из фона/свёрнутого окна всегда сверяет состояние с брокером.
-       Иначе скрытая вкладка продолжает свой местный таймер и может объявить
-       себя художником, невидимым остальным игрокам. */
+    /* Возврат в видимую вкладку больше не показывает окно «синхронизация»:
+       оно мигало при каждом переключении окна и мешало игре. Полный resync
+       нужен только при настоящем переподключении; здесь мы просто переспра-
+       шиваем retained-темы и обновляем presence с признаком видимости. */
+    var lastVisibleRefreshAt = 0;
     function onVisible() {
-      if (!document.hidden && typeof resyncRoom === 'function') resyncRoom('возврат в вкладку');
+      if (document.hidden || !client || !client.connected) return;
+      if (typeof refreshRoom !== 'function') return;
+      var now = Date.now();
+      if (now - lastVisibleRefreshAt < 1200) return;
+      lastVisibleRefreshAt = now;
+      refreshRoom();
     }
-    document.addEventListener('visibilitychange', onVisible);
-    window.addEventListener('focus', onVisible);
+    function onHidden() {
+      if (client && client.connected) publishPresence(true);
+    }
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) onHidden();
+      else onVisible();
+    });
+    window.addEventListener('focus', function () {
+      if (!document.hidden && client && client.connected) publishPresence(true);
+    });
     window.addEventListener('pageshow', function (event) { if (event.persisted) onVisible(); });
     window.addEventListener('resize', alignToolRail);
     if (typeof ResizeObserver !== 'undefined') new ResizeObserver(alignToolRail).observe(el.wrap);

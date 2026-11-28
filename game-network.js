@@ -6,6 +6,7 @@
     var skipOrphanUntil = 0;
     var resyncPending = false;
     var resyncStateSeen = false;
+    var resyncStartedAt = 0;
     var resyncWatchTimer = null;
 
     function applyMeta() {
@@ -47,6 +48,18 @@
       qos: 1,
       retain: true
     };
+
+    function roomTopics() {
+      return [
+        K.topic(room, 'meta'), K.topic(room, 'state'), K.topic(room, 'presence/+'),
+        K.topic(room, 'draft/+'), K.topic(room, 'stroke/+'), K.topic(room, 'canvas/+'),
+        K.topic(room, 'chat/+')
+      ];
+    }
+
+    function subscribeRoomTopics() {
+      client.subscribe(roomTopics(), { qos: 1 });
+    }
   
     client = K.connect('play-' + room + '-' + myId, willMessage);
   
@@ -57,13 +70,7 @@
       showConnectionOverlay('синхронизация', 'Подключаемся к комнате...');
       el.connection.textContent = 'онлайн';
       el.connection.classList.add('online');
-      client.subscribe(K.topic(room, 'meta'), { qos: 1 });
-      client.subscribe(K.topic(room, 'state'), { qos: 1 });
-      client.subscribe(K.topic(room, 'presence/+'), { qos: 1 });
-      client.subscribe(K.topic(room, 'draft/+'), { qos: 1 });
-      client.subscribe(K.topic(room, 'stroke/+'), { qos: 1 });
-      client.subscribe(K.topic(room, 'canvas/+'), { qos: 1 });
-      client.subscribe(K.topic(room, 'chat/+'), { qos: 1 });
+      subscribeRoomTopics();
       subscribedAt = Date.now();
       /* Медленный канал (например, из Китая) может доставлять retained-сообщения
          много секунд. До истечения этого срока никто не объявляет художника
@@ -129,9 +136,10 @@
 
     function watchResync() {
       if (!resyncPending || !client.connected) return;
-      /* Окно уходит, только когда после повторной подписки пришло состояние
-         комнаты (или создалось новое для пустой комнаты). */
-      if (resyncStateSeen) {
+      /* Окно уходит, когда после повторной подписки пришло состояние комнаты.
+         Дополнительный предел времени не даёт ему видеть вечно, если брокер
+         задержал retained-сообщение или в комнате никто больше не публикует. */
+      if (resyncStateSeen || (resyncStartedAt && Date.now() - resyncStartedAt > 8000)) {
         finishResync();
         return;
       }
@@ -149,6 +157,7 @@
       skipOrphanUntil = now + 15000;
       resyncPending = true;
       resyncStateSeen = false;
+      resyncStartedAt = now;
       if (resyncWatchTimer) {
         clearTimeout(resyncWatchTimer);
         resyncWatchTimer = null;
@@ -158,11 +167,7 @@
       }
       el.connection.textContent = 'синхронизация...';
       el.connection.classList.remove('online');
-      var topics = [
-        K.topic(room, 'meta'), K.topic(room, 'state'), K.topic(room, 'presence/+'),
-        K.topic(room, 'draft/+'), K.topic(room, 'stroke/+'), K.topic(room, 'canvas/+'),
-        K.topic(room, 'chat/+')
-      ];
+      var topics = roomTopics();
       try { client.unsubscribe(topics); } catch (error) {}
       client.subscribe(topics, { qos: 1 });
       subscribedAt = Date.now();
@@ -181,6 +186,19 @@
       resyncWatchTimer = setTimeout(watchResync, 1500);
     }
 
+    /* Возврат в уже подключённую вкладку не должен показывать окно
+       синхронизации и создавать вторую игру. Просто переспрашиваем retained-
+       темы и сразу рисуем то, что уже есть в памяти. */
+    function refreshRoom() {
+      if (sessionKicked || !client || !client.connected || !subscribedAt) return;
+      try { subscribeRoomTopics(); } catch (error) {}
+      publishPresence(true);
+      flushPendingCanvas();
+      flushFutureEvents();
+      flushPendingStrokes();
+      if (state) renderAll();
+    }
+  
     function flushPendingStrokes() {
       var pending = Object.keys(pendingStrokes).map(function (id) { return pendingStrokes[id]; });
       pendingStrokes = {};
@@ -296,6 +314,10 @@
       if (topic === K.topic(room, 'state')) {
         if (Number(data.v) < 2 || !data.round) return;
         stateSeen = true;
+        /* Сам факт получения state закрывает окно синхронизации, даже если
+           эта копия старше локальной и будет отклонена ниже. Иначе скрытая
+           вкладка висела в «синхронизации» до вечного таймаута. */
+        if (resyncPending) resyncStateSeen = true;
         if (state && Number(data.round) < Number(state.round)) return;
         if (state && Number(data.round) > Number(state.round) + 1) return;
         /* Единственный критерий свежести — updatedAt. Старый код сравнивал
@@ -306,7 +328,6 @@
             state.updatedBy && String(data.updatedBy || '') < String(state.updatedBy)) return;
         var previousRound = state ? state.round + ':' + state.wordIndex : null;
         var previousDrawer = state ? state.drawer : null;
-        if (resyncPending) resyncStateSeen = true;
         var merged = mergeState(normalizeState(data), state);
         state = merged.state;
         Object.keys(remoteDrafts).forEach(function (id) {
@@ -627,6 +648,7 @@
     G.createInitialState = createInitialState;
     G.scheduleInitialState = scheduleInitialState;
     G.resyncRoom = resyncRoom;
+    G.refreshRoom = refreshRoom;
     G.isSyncPending = isSyncPending;
     G.finishResync = finishResync;
     G.flushPendingCanvas = flushPendingCanvas;

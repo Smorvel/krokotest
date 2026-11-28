@@ -80,10 +80,15 @@
         guesserId: String(raw.guesserId || ''),
         /* Явный выход ведущего: уход подтверждён, ждать его presence ещё раз
            не нужно, раунд завершается сразу после паузы со словом. */
-        leave: !!raw.leave
+        leave: !!raw.leave,
+        /* Метка лидера, который завершает паузу. Без неё два видимых игрока
+           могли одновременно перевести раунд после возврата вкладки. */
+        rotatedBy: typeof raw.rotatedBy === 'string' ? raw.rotatedBy : ''
       };
       if (!value.id || !value.word || !value.until) return null;
-      if (!value.until || value.until <= Date.now()) return null;
+      /* Просроченное раскрытие ещё нужно, чтобы завершить раунд. Раньше оно
+       выбрасывалось сразу после until, поэтому состояние застывало на 0. */
+      if (!value.until || value.until < Date.now() - 30000) return null;
       return value;
     }
 
@@ -281,7 +286,7 @@
         incoming.guessedWords = guesses;
 
         var restoredPause = false;
-        if (previous.reveal && Number(previous.reveal.until) > Date.now() && !incoming.reveal) {
+        if (previous.reveal && Number(previous.reveal.until) > Date.now() - 30000 && !incoming.reveal) {
           incoming.reveal = previous.reveal;
           incoming.hitInfo = null;
           restoredPause = true;
@@ -334,15 +339,26 @@
       return { state: incoming, changed: changed };
     }
 
+    function isPlayerHidden(id) {
+      if (id === myId) return !!document.hidden;
+      var info = presence[id];
+      return !!(info && info.hidden);
+    }
+
     function presentPlayers() {
       var list = activePeers().slice();
       if (!isBannedMe() && !list.some(function (p) { return p.id === myId; })) {
         list.push({
           id: myId, name: profile.name, color: profile.color, avatar: profile.avatar, fingerprint: myFingerprint,
-          joinedAt: sessionJoinedAt, ts: Date.now(), online: true, noDraw: !!noDraw
+          joinedAt: sessionJoinedAt, ts: Date.now(), online: true, noDraw: !!noDraw,
+          hidden: !!document.hidden
         });
       }
       return list.sort(function (a, b) { return (Number(a.joinedAt) || 0) - (Number(b.joinedAt) || 0); });
+    }
+
+    function visiblePresentPlayers() {
+      return presentPlayers().filter(function (p) { return !isPlayerHidden(p.id); });
     }
 
     /* Живые собеседники отличаются от retained-призраков: обычный heartbeat
@@ -453,6 +469,7 @@
         joinedAt: sessionJoinedAt,
         online: online !== false,
         noDraw: !!noDraw,
+        hidden: !!document.hidden,
         ts: Date.now(),
         sessionTabId: G.sessionTabId || '',
         sessionClaimAt: Number(G.sessionClaimAt) || 0,
@@ -662,9 +679,11 @@
         Number(state.wordIndex) + ':' + String(state.drawer || '');
       if (handledRotation === rotationToken) return false;
       /* Ход переводим только владелец хода или игрок, подтвердивший уход
-         предыдущего художника. Иначе две копии создают разные раунды. */
+         предыдущего художника. Завершение уже показанного слова — тоже
+         законный повод: скрытая вкладка художника не должна блокировать раунд. */
+      var revealReady = !!(state.reveal && Date.now() >= Number(state.reveal.until));
       if (state.drawer && !isDrawer() && !(state.reveal && state.reveal.leave) &&
-          !drawerConfirmedGone(state.drawer)) return false;
+          !revealReady && !drawerConfirmedGone(state.drawer)) return false;
       if (Date.now() - (Number(lastRotationAt) || 0) < 1500) return false;
       handledRotation = rotationToken;
       lastRotationAt = Date.now();
@@ -678,7 +697,8 @@
       }
       var active = activePeers();
       var players = active.concat(active.some(function (p) { return p.id === myId; }) ? [] : [{
-        id: myId, name: profile.name, color: profile.color, avatar: profile.avatar, noDraw: !!noDraw
+        id: myId, name: profile.name, color: profile.color, avatar: profile.avatar, noDraw: !!noDraw,
+        hidden: !!document.hidden
       }]);
       /* Угадавший становится следующим художником всегда. Presence мог
          задержаться, поэтому добавляем его в список даже без свежего heartbeat. */
@@ -690,7 +710,8 @@
           color: known.color || profile.color,
           avatar: known.avatar || profile.avatar,
           fingerprint: known.fingerprint || '',
-          noDraw: !!known.noDraw
+          noDraw: !!known.noDraw,
+          hidden: !!known.hidden
         });
       }
       var activeIds = players.map(function (p) { return p.id; });
@@ -879,22 +900,24 @@
       return presentPlayers().some(function (p) { return p.id === myId; });
     }
 
+    /* Завершение паузы со словом не зависит от «живости» художника: им может
+       заниматься любой видимый игрок. Один ведущий выбирается ниже, чтобы
+       раунд не переводили дважды. */
     function isRevealAuthority() {
-      return isTurnAuthority();
+      return !!state && !sessionKicked && !document.hidden &&
+        presentPlayers().some(function (p) { return p.id === myId; });
     }
 
-    /* При уходе художника несколько игроков одновременно становятся
-       «полномочными». Завершает паузу только самый младший id — так раунд
-       не переводят дважды. */
+    /* Пока художник сам в видимой вкладке, паузу завершает он. Если он скрыт,
+       ведущим становится самый младший id среди видимых игроков — состояние
+       presence теперь передаёт признак скрытой вкладки, поэтому все клиенты
+       выбирают одного и того же игрока. */
     function isRevealLeader() {
       if (!isRevealAuthority()) return false;
       if (isDrawer()) return true;
-      /* Пока художник жив, завершает паузу только он — иначе другой игрок
-         может перевести раунд раньше него. После ухода выбираем одного
-         детерминированного ведущего (в одиночке — себя). */
-      if (state && state.drawer && activePeers().some(function (p) { return p.id === state.drawer; })) return false;
-      if (soloRoom()) return true;
-      var ids = activePeers().map(function (p) { return p.id; }).sort();
+      if (state && state.drawer && !isPlayerHidden(state.drawer) &&
+          activePeers().some(function (p) { return p.id === state.drawer; })) return false;
+      var ids = visiblePresentPlayers().map(function (p) { return p.id; }).sort();
       return ids.length > 0 && ids[0] === myId;
     }
 
@@ -932,27 +955,43 @@
 
     function finishReveal(reveal) {
       if (!state || !state.reveal || state.reveal.id !== reveal.id) return;
-      /* Пауза завершается по общему reveal.until, а не по локальному
-         таймеру. Обычно её ведёт художник; если он ушёл в скрытую вкладку,
-         после срока может завершить любой видимый игрок — повторный вызов
-         безопасен: переход защищён handledRotation. */
-      var overdue = Date.now() >= Number(reveal.until);
-      var canTakeOver = overdue && !document.hidden &&
-        presentPlayers().some(function (p) { return p.id === myId; });
-      if (!isRevealLeader() && !canTakeOver) return;
-      rotateDrawer(reveal.reason || 'Раунд завершён.', reveal.guesserId);
+      if (Date.now() < Number(reveal.until)) return;
+      /* Сначала объявляем всем, кто берёт паузу, и только потом меняем раунд.
+         Так два видимых игрока не переведут ход дважды. */
+      if (state.reveal.rotatedBy) return;
+      var leader = isRevealLeader();
+      /* Если признак скрытой вкладки пришёл с задержкой, через 3 секунды после
+         паузы завершить может любой видимый игрок. */
+      var fallback = visiblePresentPlayers().some(function (p) { return p.id === myId; }) &&
+        Date.now() >= Number(reveal.until) + 3000;
+      if (!leader && !fallback) return;
+      state.reveal.rotatedBy = myId;
       publishState();
-      renderAll();
+      setTimeout(function () {
+        if (!state || !state.reveal || state.reveal.id !== reveal.id) return;
+        if (state.reveal.rotatedBy !== myId) return;
+        if (!leader && !isRevealLeader() && Date.now() < Number(reveal.until) + 3000) return;
+        rotateDrawer(reveal.reason || 'Раунд завершён.', reveal.guesserId);
+        publishState();
+        renderAll();
+      }, 250);
     }
 
     function scheduleRevealResolution(reveal) {
       if (!reveal || !reveal.id || handledRevealId === reveal.id) return;
       handledRevealId = reveal.id;
       if (typeof renderReveal === 'function') renderReveal();
+      var wait = Math.max(0, reveal.until - Date.now());
       setTimeout(function () {
         if (!state || !state.reveal || state.reveal.id !== reveal.id) return;
         finishReveal(reveal);
-      }, Math.max(0, reveal.until - Date.now()) + 150);
+      }, wait + 150);
+      /* Повтор нужен, если лидер оказался в скрытой вкладке и не завершил
+         паузу вовремя: его заменяет видимый игрок по общему состоянию. */
+      setTimeout(function () {
+        if (!state || !state.reveal || state.reveal.id !== reveal.id) return;
+        finishReveal(reveal);
+      }, wait + 3500);
     }
 
     function scheduleHitResolution(info) {
@@ -984,7 +1023,8 @@
       var active = activePeers();
       var players = active.concat(active.some(function (p) { return p.id === myId; })
         ? []
-        : [{ id: myId, name: profile.name, color: profile.color, avatar: profile.avatar, noDraw: !!noDraw }]);
+        : [{ id: myId, name: profile.name, color: profile.color, avatar: profile.avatar, noDraw: !!noDraw,
+            hidden: !!document.hidden }]);
       var ids = players.map(function (p) { return p.id; });
       var drawerPresent = !!state.drawer && (state.drawer === myId ||
         active.some(function (p) { return p.id === state.drawer; }));
@@ -1036,6 +1076,8 @@
     G.mergeState = mergeState;
     G.normalizeStroke = migrateStroke;
     G.presentPlayers = presentPlayers;
+    G.isPlayerHidden = isPlayerHidden;
+    G.visiblePresentPlayers = visiblePresentPlayers;
     G.isDrawer = isDrawer;
     G.publishState = publishState;
     G.publishChatEvent = publishChatEvent;
@@ -1055,6 +1097,7 @@
     G.showHitAnimation = showHitAnimation;
     G.isTurnAuthority = isTurnAuthority;
     G.isRevealAuthority = isRevealAuthority;
+    G.isRevealLeader = isRevealLeader;
     G.activePeers = activePeers;
     G.soloRoom = soloRoom;
     G.drawerConfirmedGone = drawerConfirmedGone;
