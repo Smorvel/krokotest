@@ -443,11 +443,15 @@
 
     /* Унаследованное «ждём» без ведущего — не живое ожидание, а оставшийся
        retained-след ушедшего игрока. Такую комнату надо начать заново, а не
-       показывать чужой рисунок с вечным таймером ожидания. */
+       показывать чужой рисунок с вечным таймером ожидания. Retained-presence
+       живого ведущего обновляется каждые 5 секунд, поэтому один только флаг
+       retain не означает, что игрок ушёл: иначе гость стирал комнату при входе. */
     function abandonedWaitingRoom() {
       if (!state || !state.waitingForPlayers || state.reveal || isHitPaused() || document.hidden) return false;
       if (state.drawer === myId) return false;
-      return !activePeers().some(function (peer) { return !peer.retained; });
+      if ((typeof isSyncPending === 'function' && isSyncPending()) ||
+          (presenceReadyAt && Date.now() < presenceReadyAt)) return false;
+      return activePeers().length === 0;
     }
   
     function isDrawer() {
