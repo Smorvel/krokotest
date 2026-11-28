@@ -50,9 +50,7 @@
       var guessed = {};
       (state && state.guessedWords || []).forEach(function (key) { guessed[key] = true; });
       var drawerView = !forceGuesser && isDrawer();
-      var hintDue = !!(state && !state.hintsDisabled && state.roundMs > 0 &&
-        Date.now() - state.startedAt >= state.roundMs * 0.9);
-      var hintLeft = hintDue && !drawerView;
+      var hintLetters = (state && state.hintLetters) || {};
       var parts = String(text || '').split(/(\s+)/);
       var result = [];
       parts.forEach(function (part) {
@@ -61,14 +59,14 @@
           return;
         }
         var key = normToken(part);
+        var revealedLetters = hintLetters[key] || [];
         var revealAll = drawerView || (key && guessed[key]);
         for (var i = 0; i < part.length; i++) {
           var ch = part.charAt(i);
           var isLetter = /[a-zа-яё0-9]/i.test(ch);
           if (!isLetter) {
             result.push({ char: ch, plain: true });
-          } else if (revealAll || hintLeft) {
-            if (hintLeft && !revealAll) hintLeft = false;
+          } else if (revealAll || revealedLetters.indexOf(i) >= 0) {
             result.push({ char: ch, revealed: true });
           } else {
             result.push({ char: '•', masked: true });
@@ -166,6 +164,8 @@
       state.wordHistory = history.concat(pick.full).slice(-HISTORY_LIMIT);
       state.guessedWords = [];
       state.hintSent = false;
+      state.hintStage = 0;
+      state.hintLetters = {};
     }
   
     /* ---------- Бан: ID + отпечаток браузера ---------- */
