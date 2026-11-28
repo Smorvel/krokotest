@@ -76,7 +76,13 @@
         flushPendingStrokes();
       }
       if (state && state.hitInfo) scheduleHitResolution(state.hitInfo);
-      if (state && state.reveal && Number(state.reveal.until) <= Date.now()) finishReveal(state.reveal);
+      if (state && state.reveal) {
+        var revealUntil = typeof consensusLocalRevealUntil === 'function'
+          ? (consensusLocalRevealUntil(state) || 0)
+          : 0;
+        if (!revealUntil) revealUntil = Number(state.reveal.until) || 0;
+        if (revealUntil <= Date.now()) finishReveal(state.reveal);
+      }
       if (state && typeof resumeWaitingRound === 'function') resumeWaitingRound();
       if (state) ensureDrawer();
       checkTimeout();
