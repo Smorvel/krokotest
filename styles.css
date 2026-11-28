@@ -207,22 +207,31 @@ textarea { resize: vertical; }
   position: static;
   align-self: stretch;
   flex-direction: row;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: center;
   align-items: center;
   box-sizing: border-box;
   width: 100%;
-  gap: 5px;
+  gap: 4px;
   padding: 5px 6px;
   margin: 10px 0 0;
 }
-.rail-horizontal .rail-sep { width: 1px; height: 30px; align-self: center; }
-.rail-horizontal .rail-control { width: 32px; gap: 0; }
+/* В горизонтальном режиме кнопки сидят плотно, как кляксы в нижней панели.
+   Auto-margin из обычной вертикальной панели убирается, иначе кнопки
+   разлетаются по всей ширине. */
 .rail-horizontal .tool-btn,
 .rail-horizontal .pipette-btn,
-.rail-horizontal .toggle-btn { width: 30px; height: 30px; }
-.rail-horizontal .knob { width: 32px; height: 32px; }
-.rail-horizontal .bg-square { width: 32px; height: 32px; }
+.rail-horizontal .toggle-btn,
+.rail-horizontal .knob,
+.rail-horizontal .bg-square { margin: 0; flex: none; }
+.rail-horizontal .rail-sep { width: 1px; height: 28px; align-self: center; flex: none; }
+.rail-horizontal .tool-btn.tool-sep { width: 1px; height: 28px; padding: 0; border: 0; align-self: center; }
+.rail-horizontal .rail-control { width: 30px; gap: 0; }
+.rail-horizontal .tool-btn,
+.rail-horizontal .pipette-btn,
+.rail-horizontal .toggle-btn { width: 28px; height: 28px; }
+.rail-horizontal .knob { width: 30px; height: 30px; }
+.rail-horizontal .bg-square { width: 30px; height: 30px; }
 .rail-control { display: grid; justify-items: center; gap: 2px; width: 34px; flex: none; }
 .rail-caption { display: none; }
 .rail-bg { flex: none; width: 36px; height: 36px; margin: 0 auto; }
