@@ -270,7 +270,11 @@
   
     function renderReveal() {
       var reveal = state && (state.reveal || state.lastWord);
-      var active = !!reveal && Number(reveal.until) > Date.now();
+      var until = reveal && typeof consensusLocalRevealUntil === 'function'
+        ? (consensusLocalRevealUntil({ reveal: reveal, updatedAt: state.updatedAt }) || 0)
+        : 0;
+      if (!until && reveal) until = Number(reveal.until) || 0;
+      var active = !!reveal && until > Date.now();
       if (el.save) el.save.hidden = !active;
       if (!el.wordReveal || !active) {
         if (el.wordReveal) el.wordReveal.hidden = true;
