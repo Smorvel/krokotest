@@ -39,6 +39,21 @@
       return !!(message && message.round && state && state.round && Number(message.round) < Number(state.round));
     }
 
+    var renderedSystemIds = '';
+    function renderSystemFeed() {
+      if (!el.systemFeed || !state) return;
+      var now = Date.now();
+      var events = (state.systemEvents || []).filter(function (event) {
+        return event && event.text && now - (Number(event.at) || 0) < SYSTEM_NOTICE_MS;
+      }).slice(-4);
+      var ids = events.map(function (event) { return event.id; }).join(',');
+      if (ids === renderedSystemIds) return;
+      renderedSystemIds = ids;
+      el.systemFeed.innerHTML = events.map(function (event) {
+        return '<div class="system-notice">' + K.escapeHtml(event.text) + '</div>';
+      }).join('');
+    }
+
     function reactionMarkup(message) {
       if (message.system) return '';
       var value = reactionValue(message.id);
@@ -61,13 +76,12 @@
       var previousTop = el.messages.scrollTop;
       var bannedIds = state.bans || [];
       el.messages.innerHTML = state.messages.filter(function (m) {
-        return !(m.ownerId && bannedIds.indexOf(m.ownerId) >= 0);
+        /* Системные события живут отдельной плашкой над чатом. */
+        return !m.system && !(m.ownerId && bannedIds.indexOf(m.ownerId) >= 0);
       }).map(function (message) {
         var old = isOldMessage(message);
-        var cls = 'message' + (old ? ' old' : '') + (message.system ? ' system' : '') + (message.hit ? ' hit' : '');
-        var body = message.system
-          ? K.escapeHtml(message.text)
-          : '<b>' + K.escapeHtml(message.name) + ':</b> ' + K.escapeHtml(message.text);
+        var cls = 'message' + (old ? ' old' : '') + (message.hit ? ' hit' : '');
+        var body = '<b>' + K.escapeHtml(message.name) + ':</b> ' + K.escapeHtml(message.text);
         return '<div class="' + cls + '">' + reactionMarkup(message) + body + '</div>';
       }).join('');
       /* Сообщения всегда прижаты к низу: новые появляются снизу, старые
@@ -245,6 +259,7 @@
       banned = isBannedMe();
       renderPlayers();
       renderMessages();
+      renderSystemFeed();
       renderWord();
       renderTools();
       renderReveal();
@@ -260,6 +275,7 @@
     G.isOldMessage = isOldMessage;
     G.reactionMarkup = reactionMarkup;
     G.renderMessages = renderMessages;
+    G.renderSystemFeed = renderSystemFeed;
     G.renderWord = renderWord;
     G.swatchButton = swatchButton;
     G.renderPalettes = renderPalettes;
