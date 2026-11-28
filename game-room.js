@@ -450,6 +450,9 @@
          публикацию нового раунда всё равно должен разослать: иначе остальные
          останутся на старом раунде с уже показанным словом. */
       if (sessionKicked || !state || !client || !client.connected || (!force && !isStatePublisher())) return;
+      /* Пока идёт тихая сверка после возврата в вкладку, старый локальный
+         художник не имеет права рассылать состояние и «отбирать» ход. */
+      if (typeof isSyncPending === 'function' && isSyncPending()) return;
       state.rev = (Number(state.rev) || 0) + 1;
       state.updatedAt = Date.now();
       state.updatedBy = myId;
