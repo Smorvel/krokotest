@@ -264,8 +264,11 @@ textarea { resize: vertical; }
 .tool-rail.disabled .bg-square,
 .tool-rail.disabled .pipette-btn { opacity: .45; }
 
-.stage { grid-column: 2; min-width: 0; }
+/* Нижняя палитра должна стоять на одном уровне с правой колонкой: свободное
+   место после квадрата уходит между холстом и палитрой, а не под палитру. */
+.stage { grid-column: 2; display: flex; flex-direction: column; min-width: 0; }
 .wordbar {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -451,13 +454,13 @@ textarea { resize: vertical; }
 }
 /* Как на croch.ru: при одном-двух сообщениях они висят внизу, а не сверху. */
 .messages > :first-child { margin-top: auto; }
+.chat-source { flex: 0 0 auto; padding: 0 3px 3px; }
 .chat-stream { position: relative; display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
-.chat-head { flex: 0 0 auto; min-height: 14px; padding: 2px 2px 0; }
 /* Системные события живут отдельной плашкой над сообщениями чата и не
    занимают место в ленте: пользовательские сообщения остаются на своих местах. */
 .system-feed {
   position: absolute;
-  top: 22px;
+  top: 4px;
   right: 4px;
   left: 4px;
   z-index: 4;
@@ -683,11 +686,12 @@ textarea { resize: vertical; }
 
 .canvas-wrap {
   position: relative;
+  flex: 0 1 auto;
   width: min(100%, 760px);
   min-width: 0;
   max-width: 760px;
   aspect-ratio: 1 / 1;
-  margin: 0 auto;
+  margin: 0 auto 10px;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -733,10 +737,11 @@ body.can-draw .canvas-wrap, body.can-draw #drawCanvas { cursor: none; }
 
 .color-dock {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
   gap: 14px;
-  margin-top: 10px;
+  margin-top: auto;
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 12px;
