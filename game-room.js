@@ -78,6 +78,7 @@
         until: Number(raw.until) || 0,
         reason: String(raw.reason || ''),
         guesserId: String(raw.guesserId || ''),
+        guesserName: String(raw.guesserName || ''),
         /* Явный выход ведущего: уход подтверждён, ждать его presence ещё раз
            не нужно, раунд завершается сразу после паузы со словом. */
         leave: !!raw.leave,
@@ -136,6 +137,8 @@
       s.pendingRoundMs = isFinite(pendingRoundMs) && pendingRoundMs >= 0 && pendingRoundMs <= MAX_ROUND_MS
         ? pendingRoundMs : 0;
       s.pendingRoundMsAt = Number(s.pendingRoundMsAt) || 0;
+      var savedRoundMs = Number(s.savedRoundMs);
+      s.savedRoundMs = isFinite(savedRoundMs) && savedRoundMs >= 0 && savedRoundMs <= MAX_ROUND_MS ? savedRoundMs : 0;
       s.deadline = Number(s.deadline) || 0;
       s.remainingMs = Number(s.remainingMs) || 0;
       /* Общее состояние никогда не несёт рисунок и его версию. Источник
@@ -193,6 +196,24 @@
       s.reveal = normalizeReveal(s.reveal);
       s.lastWord = normalizeReveal(s.lastWord);
       s.hintSent = !!s.hintSent;
+      var hintStage = Number(s.hintStage);
+      s.hintStage = isFinite(hintStage) ? Math.max(0, Math.min(3, Math.round(hintStage))) : 0;
+      var rawHints = s.hintLetters && typeof s.hintLetters === 'object' ? s.hintLetters : {};
+      s.hintLetters = {};
+      Object.keys(rawHints).forEach(function (key) {
+        if (Array.isArray(rawHints[key])) {
+          s.hintLetters[key] = rawHints[key]
+            .map(function (value) { return Number(value) || 0; })
+            .filter(function (value) { return value > 0; });
+        }
+      });
+      s.systemEvents = Array.isArray(s.systemEvents)
+        ? s.systemEvents.filter(function (event) {
+            return event && event.id && event.text && (Number(event.at) || 0) > Date.now() - SYSTEM_NOTICE_MS - 1000;
+          }).slice(-8).map(function (event) {
+            return { id: String(event.id), text: String(event.text), at: Number(event.at) || 0 };
+          })
+        : [];
       s.waitingForPlayers = !!s.waitingForPlayers;
       s.expiredAt = Number(s.expiredAt) || 0;
       s.updatedAt = Number(s.updatedAt) || 0;
@@ -242,6 +263,23 @@
         }
       });
       incoming.reactions = reactions;
+
+      /* Системные подсказки живут очень коротко, но не должны теряться из-за
+         задержанной копии состояния. */
+      var seenNoticeIds = {};
+      var systemEvents = [];
+      (incoming.systemEvents || []).concat(previous.systemEvents || [])
+        .slice()
+        .sort(function (a, b) { return (Number(b && b.at) || 0) - (Number(a && a.at) || 0); })
+        .forEach(function (event) {
+          if (!event || !event.id || seenNoticeIds[event.id]) return;
+          if ((Number(event.at) || 0) < Date.now() - SYSTEM_NOTICE_MS - 1000) return;
+          seenNoticeIds[event.id] = true;
+          systemEvents.push(event);
+        });
+      systemEvents.reverse();
+      if (systemEvents.length > 8) systemEvents = systemEvents.slice(-8);
+      incoming.systemEvents = systemEvents;
 
       var scores = incoming.scores || {};
       Object.keys(previous.scores || {}).forEach(function (name) {
@@ -351,7 +389,7 @@
         list.push({
           id: myId, name: profile.name, color: profile.color, avatar: profile.avatar, fingerprint: myFingerprint,
           joinedAt: sessionJoinedAt, ts: Date.now(), online: true, noDraw: !!noDraw,
-          hidden: !!document.hidden
+          bgColor: tool.bg || profile.bgColor || '#252932', hidden: !!document.hidden
         });
       }
       return list.sort(function (a, b) { return (Number(a.joinedAt) || 0) - (Number(b.joinedAt) || 0); });
@@ -473,6 +511,7 @@
         joinedAt: sessionJoinedAt,
         online: online !== false,
         noDraw: !!noDraw,
+        bgColor: tool.bg || profile.bgColor || '#252932',
         hidden: !!document.hidden,
         ts: Date.now(),
         sessionTabId: G.sessionTabId || '',
@@ -669,12 +708,32 @@
     }
   
     function systemMessage(text) {
-      if (!state) return;
-      state.messages.push({
-        id: K.uid(), ownerId: '', name: 'система', text: text, system: true,
-        round: state.round, at: Date.now()
-      });
-      state.messages = state.messages.slice(-50);
+      if (!state || !text) return;
+      var event = { id: K.uid(), text: String(text), at: Date.now() };
+      state.systemEvents = (state.systemEvents || []).concat(event).slice(-8);
+      if (typeof renderSystemFeed === 'function') renderSystemFeed();
+    }
+
+    /* Фон нового раунда задаёт сам художник, а не предыдущий ведущий. */
+    function playerBackground(player) {
+      var bg = player && (player.bgColor || (player.avatar && player.avatar.bg));
+      return /^#[0-9a-f]{6}$/i.test(String(bg || '')) ? String(bg) : '#252932';
+    }
+
+    /* Случайный выбор с небольшим, но не нулевым шансом для только что
+       рисовавшего: он не исключается из очереди, но не доминирует в ней. */
+    function weightedDrawerId(ids, previousId) {
+      if (!ids.length) return '';
+      var pool = ids.filter(function (id) { return !isIdBanned(id); });
+      if (!pool.length) pool = ids.slice();
+      var weights = pool.map(function (id) { return id === previousId ? 1 : 10; });
+      var total = weights.reduce(function (sum, weight) { return sum + weight; }, 0);
+      var ticket = Math.random() * total;
+      for (var i = 0; i < pool.length; i += 1) {
+        ticket -= weights[i];
+        if (ticket < 0) return pool[i];
+      }
+      return pool[pool.length - 1];
     }
   
     function rotateDrawer(reason, nextDrawerId) {
@@ -702,41 +761,27 @@
       var active = activePeers();
       var players = active.concat(active.some(function (p) { return p.id === myId; }) ? [] : [{
         id: myId, name: profile.name, color: profile.color, avatar: profile.avatar, noDraw: !!noDraw,
-        hidden: !!document.hidden
+        bgColor: tool.bg || profile.bgColor || '#252932', hidden: !!document.hidden
       }]);
-      /* Угадавший становится следующим художником всегда. Presence мог
-         задержаться, поэтому добавляем его в список даже без свежего heartbeat. */
-      if (nextDrawerId && !players.some(function (p) { return p.id === nextDrawerId; })) {
-        var known = presence[nextDrawerId] || {};
-        players.push({
-          id: nextDrawerId,
-          name: known.name || 'Игрок',
-          color: known.color || profile.color,
-          avatar: known.avatar || profile.avatar,
-          fingerprint: known.fingerprint || '',
-          noDraw: !!known.noDraw,
-          hidden: !!known.hidden
-        });
-      }
+      /* Угадавший становится следующим художником, только если он хочет
+         рисовать. Иначе ход определяется случайно по общей очереди. Игрока
+         без свежего presence не добавляем: по нему нельзя узнать, поставил
+         ли он «не хочу рисовать». */
       var activeIds = players.map(function (p) { return p.id; });
       var ids = state.queue.filter(function (id) {
         return activeIds.indexOf(id) >= 0 && !isIdBanned(id) && !isFingerprintBanned(presence[id] && presence[id].fingerprint);
       });
-      if (nextDrawerId && ids.indexOf(nextDrawerId) < 0) ids.unshift(nextDrawerId);
+      if (nextDrawerId && activeIds.indexOf(nextDrawerId) >= 0 && ids.indexOf(nextDrawerId) < 0) {
+        ids.push(nextDrawerId);
+      }
       var willing = ids.filter(function (id) {
         var player = players.filter(function (p) { return p.id === id; })[0];
         return !(player && player.noDraw);
       });
-      /* Обычный ход не возвращает художника того же раунда и не выбирает
-         тех, кто поставил «не хочу рисовать». Если желающих нет — ход остаётся
-         в общую очередь, иначе игра встала бы. */
-      var pool = willing.filter(function (id) { return id !== state.drawer; });
-      if (!pool.length) pool = ids.filter(function (id) { return id !== state.drawer; });
-      if (!pool.length) pool = willing;
-      if (!pool.length) pool = ids;
-      var nextId = nextDrawerId && ids.indexOf(nextDrawerId) >= 0
-        ? nextDrawerId
-        : (pool.length ? pool[Math.floor(Math.random() * pool.length)] : myId);
+      var guesserWantsDraw = !!nextDrawerId && willing.indexOf(nextDrawerId) >= 0;
+      var pool = willing.length ? willing : ids;
+      var nextId = guesserWantsDraw ? nextDrawerId : weightedDrawerId(pool, state.drawer);
+      if (!nextId) nextId = myId;
       var index = ids.indexOf(nextId);
       if (index > 0) {
         ids.splice(index, 1);
@@ -746,9 +791,18 @@
       }
       state.queue = ids;
       state.drawer = nextId;
+      var nextPlayer = players.filter(function (p) { return p.id === nextId; })[0];
+      state.bg = playerBackground(nextPlayer);
+      state.bgBy = nextId;
       var endingAt = state.startedAt;
       chooseNextWord();
       state.round += 1;
+      /* Ожидание второго игрока давало только минуту; следующий раунд снова
+         живёт по обычной настройке комнаты. */
+      if (Number(state.savedRoundMs)) {
+        state.roundMs = Number(state.savedRoundMs);
+        state.savedRoundMs = 0;
+      }
       /* Настройка длительности, сделанная во время раунда, применяется здесь:
          новый раунд начинается уже с новым временем у всех игроков. */
       if (Number(state.pendingRoundMsAt)) {
@@ -811,8 +865,6 @@
         canvasVersion = 0;
         canvasOwner = state.drawer;
       }
-      var next = players.filter(function (p) { return p.id === state.drawer; })[0];
-      systemMessage(reason + ' Следующий художник: ' + (next ? next.name : 'вы') + '.');
       return true;
     }
 
@@ -823,6 +875,20 @@
       /* Конец времени определяется общим state.deadline, а не правом «взять
          ход»: скрытый художник не должен блокировать таймер у остальных. */
       if (handledStart === state.startedAt) return;
+
+      /* В одиночке время не завершает раунд: игрок ждёт собеседника. Слово и
+       рисунок остаются на месте, а счётчик показывает «0:00 · ждём». */
+      if (soloRoom()) {
+        handledStart = state.startedAt;
+        state.waitingForPlayers = true;
+        state.savedRoundMs = Number(state.roundMs) || 0;
+        state.remainingMs = 0;
+        state.deadline = 0;
+        state.expiredAt = Date.now();
+        publishState(true);
+        renderAll();
+        return;
+      }
 
       /* Таймаут — такой же конец раунда, как угадывание: слово показывается
        всем, рисунок сохраняется, затем обычный переход к следующему ходу. */
@@ -835,13 +901,78 @@
         'timeout-' + state.round + ':' + state.startedAt, TIMEOUT_REVEAL_MS);
     }
   
+    /* Возобновление раунда, который ждал второго игрока. Даём ровно минуту
+       независимо от настройки длительности: так раунд не пропадает впустую. */
+    function resumeWaitingRound() {
+      if (!state || !state.waitingForPlayers || document.hidden) return;
+      /* Retained-presence от уже ушедшего игрока не считаем приходом: раунд
+         продолжается только когда в комнате действительно появился собеседник. */
+      if (!activePeers().some(function (p) { return !p.retained; })) return;
+      state.waitingForPlayers = false;
+      state.expiredAt = 0;
+      /* Новый отрезок ровно минута — подсказки отсчитываются заново. */
+      state.roundMs = 60000;
+      state.deadline = Date.now() + 60000;
+      state.remainingMs = 0;
+      state.hintStage = 0;
+      state.hintLetters = {};
+      state.hintSent = false;
+      handledStart = 0;
+      publishState(true);
+      renderAll();
+    }
+
+    /* Псевдослучайный, но одинаковый у всех клиентов выбор буквы: иначе два
+       видимых игрока могли бы открыть разные буквы и разойтись. */
+    function hintPick(candidates, key, stage) {
+      var seed = 2166136261;
+      var input = String(key) + ':' + Number(state.round) + ':' +
+        Number(state.wordIndex) + ':' + Number(stage);
+      for (var i = 0; i < input.length; i += 1) {
+        seed ^= input.charCodeAt(i);
+        seed = (seed * 16777619) >>> 0;
+      }
+      return candidates[seed % candidates.length];
+    }
+
+    function revealHintStage(stage) {
+      var revealed = state.hintLetters || (state.hintLetters = {});
+      var seen = {};
+      String(word() || '').split(/(\s+)/).forEach(function (part) {
+        if (!part.trim()) return;
+        var key = normToken(part);
+        if (!key || seen[key]) return;
+        seen[key] = true;
+        var positions = (revealed[key] || []).slice();
+        var candidates = [];
+        for (var i = 0; i < part.length; i += 1) {
+          if (!/[a-zа-яё0-9]/i.test(part.charAt(i))) continue;
+          if (stage === 3) {
+            if (i === 0 && positions.indexOf(i) < 0) candidates.push(i);
+          } else if (i > 0 && positions.indexOf(i) < 0) {
+            candidates.push(i);
+          }
+        }
+        if (!candidates.length) return;
+        var pick = stage === 3 ? candidates[0] : hintPick(candidates, key, stage);
+        positions.push(pick);
+        revealed[key] = positions;
+      });
+    }
+
     function issueHintIfNeeded() {
-      if (document.hidden || !state || state.reveal || state.hintsDisabled || state.roundMs === 0 || state.hintSent || isHitPaused()) return;
-      if (!isDrawer()) return;
-      if (roundDeadline() - Date.now() > state.roundMs * 0.1) return;
+      if (document.hidden || !state || state.reveal || state.hintsDisabled ||
+          state.waitingForPlayers || !state.roundMs || isHitPaused()) return;
+      var left = remainingRoundMs();
+      var ratio = left / Number(state.roundMs);
+      var due = ratio <= 0.05 ? 3 : (ratio <= 0.20 ? 2 : (ratio <= 0.35 ? 1 : 0));
+      var current = Number(state.hintStage) || 0;
+      if (due <= current) return;
+      for (var stage = current + 1; stage <= due; stage += 1) revealHintStage(stage);
+      state.hintStage = due;
       state.hintSent = true;
-      systemMessage('Подсказка: ' + maskPhrase(word()));
-      publishState();
+      publishState(true);
+      renderWord();
     }
   
     function showHitAnimation(info) {
@@ -933,13 +1064,17 @@
       }
       var currentWord = word();
       var label = reason || 'Раунд завершён';
+      var guesserId = String((state.hitInfo && state.hitInfo.guesserId) || '');
+      var guesserName = String((state.hitInfo && state.hitInfo.guesserName) ||
+        (presence[guesserId] && presence[guesserId].name) || '');
       var reveal = {
         id: hitId || K.uid(),
         word: currentWord,
         round: state.round,
         until: Date.now() + (Number(durationMs) > 0 ? Number(durationMs) : REVEAL_MS),
         reason: label,
-        guesserId: String((state.hitInfo && state.hitInfo.guesserId) || ''),
+        guesserId: guesserId,
+        guesserName: guesserName,
         leave: !!leave
       };
       pauseRoundTimer();
@@ -950,7 +1085,12 @@
       localDraft = null;
       remoteDrafts = {};
       publishDraft(null, true);
-      systemMessage(label + ' Загаданное слово: ' + currentWord + '.');
+      if (leave) systemMessage('Художник вышел.');
+      else if (!guesserId) systemMessage(label);
+      systemMessage('Загаданное слово: ' + currentWord + '.');
+      if (!leave && guesserId) {
+        systemMessage('Угадал игрок ' + (guesserName || 'Игрок') + '!');
+      }
       publishState();
       scheduleRevealResolution(reveal);
       renderAll();
@@ -1015,7 +1155,7 @@
     }
 
     function ensureDrawer() {
-      if (document.hidden || !state) return;
+      if (document.hidden || !state || state.waitingForPlayers) return;
       var solo = soloRoom();
       /* В компании ждём медленный retained-presence. В одиночке — только
          короткий срок доставки, после чего ход берётся сразу. */
@@ -1028,7 +1168,7 @@
       var players = active.concat(active.some(function (p) { return p.id === myId; })
         ? []
         : [{ id: myId, name: profile.name, color: profile.color, avatar: profile.avatar, noDraw: !!noDraw,
-            hidden: !!document.hidden }]);
+            bgColor: tool.bg || profile.bgColor || '#252932', hidden: !!document.hidden }]);
       var ids = players.map(function (p) { return p.id; });
       var drawerPresent = !!state.drawer && (state.drawer === myId ||
         active.some(function (p) { return p.id === state.drawer; }));
@@ -1097,6 +1237,7 @@
     G.systemMessage = systemMessage;
     G.rotateDrawer = rotateDrawer;
     G.checkTimeout = checkTimeout;
+    G.resumeWaitingRound = resumeWaitingRound;
     G.issueHintIfNeeded = issueHintIfNeeded;
     G.showHitAnimation = showHitAnimation;
     G.isTurnAuthority = isTurnAuthority;
