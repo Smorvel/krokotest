@@ -56,6 +56,8 @@
         if (!node || !node.parentNode) {
           node = document.createElement('div');
           node.className = 'system-notice';
+          node.dataset.kind = typeof systemNoticeKind === 'function'
+            ? systemNoticeKind(event.text) : 'info';
           node.textContent = event.text;
           systemNoticeNodes[event.id] = node;
         }
