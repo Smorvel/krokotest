@@ -415,6 +415,15 @@
     function soloRoom() {
       return activePeers().length === 0;
     }
+
+    /* Унаследованное «ждём» без ведущего — не живое ожидание, а оставшийся
+       retained-след ушедшего игрока. Такую комнату надо начать заново, а не
+       показывать чужой рисунок с вечным таймером ожидания. */
+    function abandonedWaitingRoom() {
+      if (!state || !state.waitingForPlayers || state.reveal || isHitPaused() || document.hidden) return false;
+      if (state.drawer === myId) return false;
+      return !activePeers().some(function (peer) { return !peer.retained; });
+    }
   
     function isDrawer() {
       return !sessionKicked && !!state && state.drawer === myId && !isBannedMe();
@@ -1245,6 +1254,7 @@
     G.isRevealLeader = isRevealLeader;
     G.activePeers = activePeers;
     G.soloRoom = soloRoom;
+    G.abandonedWaitingRoom = abandonedWaitingRoom;
     G.drawerConfirmedGone = drawerConfirmedGone;
     G.beginReveal = beginReveal;
     G.finishReveal = finishReveal;
