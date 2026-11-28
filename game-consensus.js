@@ -95,9 +95,48 @@
       return beforeLocal !== winner || beforeIncoming !== winner;
     }
 
+    /* Сравнение копий состояния без опоры на системные часы. Раньше свежесть
+       решал локальный Date.now(): при разнице часов Китай/Россия каждая
+       сторона отклоняла чужую копию и оставалась при своём ведущем. Теперь
+       сначала сравнивается номер версии, затем детерминированный id автора. */
+    function signature(state) {
+      return [
+        Number(state && state.round) || 0,
+        Number(state && state.wordIndex) || 0,
+        Number(state && state.rev) || 0,
+        String((state && state.drawer) || ''),
+        String((state && state.updatedBy) || ''),
+        String((state && state.bgBy) || ''),
+        Number(state && state.startedAt) || 0,
+        Number(state && state.deadline) || 0,
+        Array.isArray(state && state.messages) ? state.messages.length : 0,
+        Array.isArray(state && state.queue) ? state.queue.join(',') : ''
+      ].join('|');
+    }
+
+    /* 1 — incoming wins, -1 — local wins, 0 — копии эквивалентны. */
+    function compareState(local, incoming) {
+      if (!local) return 1;
+      if (!incoming) return -1;
+      var localRound = Number(local.round) || 0;
+      var incomingRound = Number(incoming.round) || 0;
+      if (incomingRound !== localRound) return incomingRound > localRound ? 1 : -1;
+      var localRev = Number(local.rev) || 0;
+      var incomingRev = Number(incoming.rev) || 0;
+      if (incomingRev !== localRev) return incomingRev > localRev ? 1 : -1;
+      var localBy = String(local.updatedBy || local.drawer || '');
+      var incomingBy = String(incoming.updatedBy || incoming.drawer || '');
+      if (incomingBy !== localBy) return incomingBy < localBy ? 1 : -1;
+      var localHash = hash32(signature(local));
+      var incomingHash = hash32(signature(incoming));
+      if (incomingHash !== localHash) return incomingHash < localHash ? 1 : -1;
+      return 0;
+    }
+
     G.consensusHash = hash32;
     G.consensusPick = pick;
     G.consensusWeightedDrawerId = weighted;
     G.consensusResolveDrawer = resolveDrawer;
+    G.consensusCompareState = compareState;
   }
 })(window.KROKO_GAME);
