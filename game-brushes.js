@@ -178,6 +178,36 @@
       else polyline(context, points);
     }
 
+    /* Safari/WebKit не рисует path из совпавших точек. На iPad поэтому
+       пропадали одиночные мазки обычной кисти: версия штриха увеличивалась,
+       а путь оставался нулевым. Точка рисуется кругом — так же, как
+       round-cap в остальных браузерах, но без зависимости от движка. */
+    function collapsedStroke(points) {
+      if (!Array.isArray(points) || !points.length) return false;
+      var first = points[0];
+      for (var i = 1; i < points.length; i++) {
+        if (Math.abs(points[i].x - first.x) > 0.01 ||
+            Math.abs(points[i].y - first.y) > 0.01) return false;
+      }
+      return true;
+    }
+
+    function paintDot(context, point, radius) {
+      context.beginPath();
+      context.arc(point.x, point.y, Math.max(0.5, radius), 0, Math.PI * 2);
+      context.fill();
+    }
+
+    function strokeOrDot(context, points, smooth, lineWidth) {
+      if (collapsedStroke(points)) {
+        paintDot(context, points[0], lineWidth / 2);
+        return;
+      }
+      context.lineWidth = lineWidth;
+      strokePath(context, points, smooth);
+      context.stroke();
+    }
+
     function pointSegmentDistance(point, a, b) {
       var dx = b.x - a.x;
       var dy = b.y - a.y;
@@ -288,7 +318,8 @@
       var smooth = !!stroke.smooth;
       var start = points[0];
       var end = points[points.length - 1];
-  
+      var collapsed = collapsedStroke(points);
+
       context.save();
       context.lineCap = 'round';
       context.lineJoin = 'round';
@@ -309,12 +340,11 @@
           context.strokeStyle = (state && state.bg) || tool.bg || '#ffffff';
         }
         context.fillStyle = context.strokeStyle;
-        strokePath(context, points, smooth);
-        context.stroke();
+        strokeOrDot(context, points, smooth, size * 1.5);
         context.restore();
         return;
       }
-  
+
       if (stroke.tool === 'soft') {
         var rgb = hexToRgb(color);
         var radius = size * 1.05;
@@ -340,26 +370,27 @@
       if (stroke.tool === 'tablet') {
         var lastWidth = size;
         context.globalAlpha = alpha;
-        for (var i = 1; i < points.length; i++) {
-          var a = points[i - 1];
-          var b = points[i];
-          var dist = Math.hypot(b.x - a.x, b.y - a.y);
-          var dt = a.t && b.t ? Math.max(1, b.t - a.t) : 16;
-          var speed = dist / dt;
-          var target = size * Math.max(0.6, Math.min(1.9, 1.85 - speed * 0.5));
-          if (b.p && b.p > 0 && b.p !== 0.5) target *= Math.max(0.75, Math.min(1.3, 0.7 + b.p * 0.6));
-          var width = lastWidth * 0.55 + target * 0.45;
-          lastWidth = width;
-          context.lineWidth = width;
-          context.beginPath();
-          context.moveTo(a.x, a.y);
-          context.lineTo(b.x, b.y);
-          context.stroke();
-        }
-        if (points.length === 1) {
-          context.beginPath();
-          context.arc(points[0].x, points[0].y, size * 0.8, 0, Math.PI * 2);
-          context.fill();
+        if (collapsed) {
+          /* Обычный тап добавляет вторую совпадающую точку — раньше
+             друг в друге пропадали и штрихи планшета. */
+          paintDot(context, start, size * 0.8);
+        } else {
+          for (var i = 1; i < points.length; i++) {
+            var a = points[i - 1];
+            var b = points[i];
+            var dist = Math.hypot(b.x - a.x, b.y - a.y);
+            var dt = a.t && b.t ? Math.max(1, b.t - a.t) : 16;
+            var speed = dist / dt;
+            var target = size * Math.max(0.6, Math.min(1.9, 1.85 - speed * 0.5));
+            if (b.p && b.p > 0 && b.p !== 0.5) target *= Math.max(0.75, Math.min(1.3, 0.7 + b.p * 0.6));
+            var width = lastWidth * 0.55 + target * 0.45;
+            lastWidth = width;
+            context.lineWidth = width;
+            context.beginPath();
+            context.moveTo(a.x, a.y);
+            context.lineTo(b.x, b.y);
+            context.stroke();
+          }
         }
         context.restore();
         return;
@@ -374,9 +405,7 @@
         context.lineWidth = Math.max(2, size);
         context.beginPath();
         if (mode === 'stripe') {
-          context.moveTo(shapeStart.x, shapeStart.y);
-          context.lineTo(shapeEnd.x, shapeEnd.y);
-          context.stroke();
+          strokeOrDot(context, [shapeStart, shapeEnd], false, Math.max(2, size));
         } else if (mode === 'circle') {
           var radiusX = Math.max(2, Math.abs(dx) / 2);
           var radiusY = Math.max(2, Math.abs(dy) / 2);
@@ -393,15 +422,11 @@
       switch (stroke.tool) {
         case 'pencil':
           context.globalAlpha = 0.92 * alpha;
-          context.lineWidth = Math.max(1, size * 0.45);
-          strokePath(context, points, smooth);
-          context.stroke();
+          strokeOrDot(context, points, smooth, Math.max(1, size * 0.45));
           break;
         case 'marker':
           context.globalAlpha = 0.34 * alpha;
-          context.lineWidth = size * 1.5;
-          strokePath(context, points, smooth);
-          context.stroke();
+          strokeOrDot(context, points, smooth, size * 1.5);
           break;
         case 'airbrush':
           points.forEach(function (point) {
@@ -417,11 +442,7 @@
           });
           break;
         case 'line':
-          context.lineWidth = size;
-          context.beginPath();
-          context.moveTo(start.x, start.y);
-          context.lineTo(end.x, end.y);
-          context.stroke();
+          strokeOrDot(context, [start, end], false, size);
           break;
         case 'rect': {
           var minX = Math.min(start.x, end.x), maxX = Math.max(start.x, end.x);
@@ -445,9 +466,7 @@
           floodFill(context, start, color, alpha);
           return;
         default:
-          context.lineWidth = size;
-          strokePath(context, points, smooth);
-          context.stroke();
+          strokeOrDot(context, points, smooth, size);
       }
       context.restore();
     }

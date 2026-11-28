@@ -586,6 +586,13 @@ textarea { resize: vertical; }
   background: #252932;
   box-shadow: 0 16px 40px rgba(0, 0, 0, .45);
 }
+/* Тач не должен превращать мазок в жест прокрутки/зума и отменять pointer. */
+.canvas-wrap, #drawCanvas {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
 /* На широком экране холст дополнительно вписывается в высоту окна, чтобы
    страница не прокручивалась. Минимальный размер 280 px оставляет рисунок
    видимым даже в очень низком окне. */
