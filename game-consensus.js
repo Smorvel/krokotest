@@ -118,6 +118,10 @@
     function compareState(local, incoming) {
       if (!local) return 1;
       if (!incoming) return -1;
+      /* Подписанное исправление хода от живого художника должно догнать
+         клиент, который успел себе назначить новый раунд с чужим ведущим. */
+      var defense = turnDefense(incoming);
+      if (defense && Number(incoming.rev) > Number(local.rev || 0)) return 1;
       var localRound = Number(local.round) || 0;
       var incomingRound = Number(incoming.round) || 0;
       if (incomingRound !== localRound) return incomingRound > localRound ? 1 : -1;
@@ -134,28 +138,93 @@
     }
 
     /* Пока настоящий художник виден и соединён, никто не может забрать у него
-       ход посреди раунда. Законная смена приходит только с новым раундом или
-       паузой/уходом; всё остальное — задержанная или чужая копия. */
+       ход посреди раунда. Защита работает и для «подозрительного» нового
+       раунда: новый игрок с задержанным presence не вправе переводить ход без
+       паузы и без подписи ушедшего художника. */
     function guardActiveDrawer(local, incoming, ctx) {
       if (!local || !incoming || !ctx || !ctx.visibleDrawer) return false;
       var localDrawer = String(local.drawer || '');
       if (!localDrawer || String(incoming.drawer || '') === localDrawer) return false;
-      if (Number(incoming.round) !== Number(local.round)) return false;
       if (incoming.reveal || incoming.hitInfo) return false;
+      var localRound = Number(local.round) || 0;
+      var incomingRound = Number(incoming.round) || 0;
+      var delta = incomingRound - localRound;
+      if (delta === 0) return true;
+      /* Новый раунд от самого художника (или банившего его создателя) —
+         законная смена. Всё остальное — попытка перехвата хода. */
+      if (delta === 1) {
+        var author = String(incoming.updatedBy || incoming.drawer || '');
+        if (author === localDrawer) return false;
+        if (Array.isArray(incoming.bans) && incoming.bans.indexOf(localDrawer) >= 0) return false;
+        return true;
+      }
+      return false;
+    }
+
+    function turnDefense(copy) {
+      var defense = copy && copy.turnDefense;
+      if (!defense || typeof defense !== 'object') return null;
+      var round = Number(defense.round) || 0;
+      var drawer = String(defense.drawer || '');
+      if (!round || !drawer) return null;
+      if (Number(copy.round) !== round || String(copy.drawer || '') !== drawer) return null;
+      if (Number(copy.rev) < Number(defense.rev || 0)) return null;
+      return { round: round, drawer: drawer, rev: Number(copy.rev) || 0 };
+    }
+
+    /* Подписанное исправление хода имеет право перебить даже более старый
+       round: клиент-перехватчик мог успеть объявить новый раунд раньше, чем
+       пришла поправка от настоящего ведущего. */
+    function acceptsSignedDefense(local, incoming) {
+      var defense = turnDefense(incoming);
+      return !!defense && Number(incoming.rev) > Number((local && local.rev) || 0);
+    }
+
+    /* retained-state без свежего retained-presence не означает пустую комнату.
+       fast-таймер в 900мс применяем только когда ведущий — мы сами, он явно
+       ушёл или его presence уже получено в этой сессии. */
+    function needsFullTurnGrace(local, ctx) {
+      if (!local || !local.drawer || !ctx) return false;
+      if (local.drawer === ctx.myId) return false;
+      if (ctx.drawerOffline || ctx.drawerMissingSince) return false;
+      if (ctx.drawerPresent || ctx.drawerLiveHere) return false;
       return true;
     }
 
-    /* Возвращаем чужую копию в наш раунд, но сохраняем все остальные данные
-       (чат, очки, реакции). Рев повышаем, чтобы эта копия победила у всех. */
+    /* Возвращаем чужую копию в наш раунд, но сохраняем чат, очки и реакции.
+       Если ход пытались перевести на новый раунд, восстанавливаем все поля,
+       которые описывают текущий раунд, и ставим подпись защиты: она позволяет
+       остальным клиентам принять исправление даже после чужих round+1. */
     function sanitizeDrawer(local, incoming) {
       var copy = Object.assign({}, incoming);
+      var sameRound = Number(incoming.round) === Number(local.round) &&
+        Number(incoming.wordIndex) === Number(local.wordIndex);
       copy.drawer = local.drawer;
       copy.queue = (local.queue || []).slice();
       copy.bg = local.bg;
       copy.bgBy = local.bgBy;
+      if (!sameRound) {
+        copy.round = Number(local.round) || 1;
+        copy.wordIndex = Number(local.wordIndex) || 0;
+        ['startedAt', 'deadline', 'remainingMs', 'roundMs', 'savedRoundMs',
+          'pendingRoundMs', 'pendingRoundMsAt', 'pausedUntil', 'expiredAt',
+          'hintStage', 'hintSent', 'hintsDisabled', 'waitingForPlayers'
+        ].forEach(function (key) { copy[key] = local[key]; });
+        copy.reveal = local.reveal ? Object.assign({}, local.reveal) : null;
+        copy.hitInfo = local.hitInfo ? Object.assign({}, local.hitInfo) : null;
+        copy.lastWord = local.lastWord ? Object.assign({}, local.lastWord) : null;
+        copy.hintLetters = local.hintLetters ? Object.assign({}, local.hintLetters) : {};
+      }
       copy.rev = Math.max(Number(incoming.rev) || 0, Number(local.rev) || 0) + 1;
       copy.updatedBy = String(local.updatedBy || local.drawer || '');
       copy.updatedAt = Date.now();
+      copy.turnDefense = {
+        round: Number(local.round) || 1,
+        drawer: String(local.drawer || ''),
+        rev: copy.rev,
+        by: copy.updatedBy,
+        at: copy.updatedAt
+      };
       return copy;
     }
 
@@ -166,5 +235,7 @@
     G.consensusCompareState = compareState;
     G.consensusGuardActiveDrawer = guardActiveDrawer;
     G.consensusSanitizeDrawer = sanitizeDrawer;
+    G.consensusAcceptsSignedDefense = acceptsSignedDefense;
+    G.consensusNeedsFullTurnGrace = needsFullTurnGrace;
   }
 })(window.KROKO_GAME);
