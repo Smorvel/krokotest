@@ -13,10 +13,16 @@
     var resyncStartedAt = 0;
     var resyncWatchTimer = null;
 
+    function setConnection(text, online) {
+      if (!el.connection) return;
+      el.connection.textContent = text;
+      el.connection.classList.toggle('online', !!online);
+    }
+
     function applyMeta() {
       if (!meta) return;
       if (room === K.DEFAULT_ROOM) meta.name = 'Общая';
-      el.roomTitle.textContent = meta.name || room;
+      if (el.roomTitle) el.roomTitle.textContent = meta.name || room;
       renderTools();
     }
   
@@ -85,8 +91,7 @@
       var wasConnected = connectedOnce;
       connectedOnce = true;
       showConnectionOverlay('синхронизация', 'Подключаемся к комнате...');
-      el.connection.textContent = 'онлайн';
-      el.connection.classList.add('online');
+      setConnection('онлайн', true);
       subscribeRoomTopics();
       subscribedAt = Date.now();
       /* Медленный канал (например, из Китая) может доставлять retained-сообщения
@@ -117,30 +122,26 @@
     client.on('reconnect', function () {
       if (sessionKicked) return;
       showConnectionOverlay('переподключение', 'Связь с комнатой потеряна. Пробуем снова...');
-      el.connection.textContent = 'переподключение...';
-      el.connection.classList.remove('online');
+      setConnection('переподключение...', false);
     });
 
     client.on('offline', function () {
       if (sessionKicked) return;
       showConnectionOverlay('нет соединения', 'Вы не соединены с комнатой. Проверьте интернет.');
-      el.connection.textContent = 'нет соединения';
-      el.connection.classList.remove('online');
+      setConnection('нет соединения', false);
       renderTools();
     });
 
     client.on('error', function () {
       if (sessionKicked) return;
       showConnectionOverlay('нет соединения', 'Вы не соединены с комнатой. Проверьте интернет.');
-      el.connection.textContent = 'нет соединения';
-      el.connection.classList.remove('online');
+      setConnection('нет соединения', false);
     });
 
     client.on('close', function () {
       if (sessionKicked || leavingRoom === myId) return;
       showConnectionOverlay('нет соединения', 'Вы не соединены с комнатой. Проверьте интернет.');
-      el.connection.textContent = 'нет соединения';
-      el.connection.classList.remove('online');
+      setConnection('нет соединения', false);
     });
   
     function isSyncPending() {
@@ -190,8 +191,7 @@
         if (typeof showConnectionOverlay === 'function') {
           showConnectionOverlay('синхронизация', 'Сверяем состояние комнаты...');
         }
-        el.connection.textContent = 'синхронизация...';
-        el.connection.classList.remove('online');
+        setConnection('синхронизация...', false);
       }
       var topics = roomTopics();
       try { client.unsubscribe(topics); } catch (error) {}
@@ -678,6 +678,10 @@
           return;
         }
         if (activePeers().length) return;
+        /* Обновление страницы ведущего: состояние унаследовано от его же
+           предыдущей вкладки, а сам он уже снова в комнате. Такую комнату
+           нельзя считать брошенной — иначе сразу выбиралось новое слово. */
+        if (state && state.drawer === myId) return;
         /* Медленный брокер может прислать retained-состояние позже. Пока оно
            не пришло и окно синхронизации не закрылось, ждём. */
         if (!stateSeen && !canvasSeen && !pendingCanvas &&
