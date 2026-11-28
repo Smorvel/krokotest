@@ -24,54 +24,24 @@
       syncDone = true;
     }
 
-    /* Панель живёт в собственной колонке сетки и липнет к верху. Холст
-       уменьшается обычной шириной, а не трансформацией: поэтому он и панель
-       всегда занимают своё место в потоке и не перекрывают палитру. */
-    function railItems() {
-      if (!el.toolRail) return [];
-      return [].slice.call(el.toolRail.children).reduce(function (all, node) {
-        if (node === el.toolGrid && getComputedStyle(node).display === 'contents') {
-          return all.concat([].slice.call(node.children));
-        }
-        all.push(node);
-        return all;
-      }, []);
-    }
-
+    /* Панель кистей больше не сжимается в два столбца. На широком экране это
+       тонкая колонка слева от холста, на узком (<1100px) — горизонтальный ряд
+       под холстом и прямо над нижней палитрой. Положение меняется только при
+       пересечении порога, без постоянных чтений геометрии. */
+    var railHorizontal = null;
     function alignToolRail() {
-      if (!el.toolRail || !el.wrap) return;
-      var items = railItems();
-      if (!items.length) return;
-      var railStyle = getComputedStyle(el.toolRail);
-      var rowGap = parseFloat(railStyle.rowGap) || 6;
-      var chrome = (parseFloat(railStyle.paddingTop) || 0) +
-        (parseFloat(railStyle.paddingBottom) || 0) +
-        (parseFloat(railStyle.borderTopWidth) || 0) +
-        (parseFloat(railStyle.borderBottomWidth) || 0);
-
-      function stackHeight(rows) {
-        var height = chrome + rowGap * Math.max(0, rows - 1);
-        for (var row = 0; row < rows; row += 1) {
-          var tallest = items[row].offsetHeight || 0;
-          var other = items[row + rows];
-          if (other) tallest = Math.max(tallest, other.offsetHeight || 0);
-          height += tallest;
-        }
-        return height;
+      if (!el.toolRail || !el.stage || !el.colorDock) return;
+      var horizontal = window.innerWidth < 1100;
+      if (horizontal === railHorizontal) return;
+      railHorizontal = horizontal;
+      el.toolRail.classList.toggle('rail-horizontal', horizontal);
+      document.body.classList.toggle('rail-horizontal', horizontal);
+      if (horizontal) {
+        el.stage.insertBefore(el.toolRail, el.colorDock);
+      } else {
+        var shell = el.toolRail.closest('.game-shell') || el.stage.parentNode;
+        shell.insertBefore(el.toolRail, shell.firstChild);
       }
-
-      /* Панель не должна быть выше холста: иначе она заходила бы на палитру.
-         Двух столбцов достаточно, чтобы всё поместилось и на узком окне. */
-      var available = Math.min(el.wrap.offsetHeight - 4, window.innerHeight - 16);
-      var cols = 1;
-      var rows = items.length;
-      var height = stackHeight(rows);
-      if (height > available && items.length > 1) {
-        cols = 2;
-        rows = Math.ceil(items.length / 2);
-      }
-      el.toolRail.style.setProperty('--rail-cols', cols);
-      el.toolRail.style.setProperty('--rail-rows', rows);
     }
 
     G.showConnectionOverlay = showConnectionOverlay;
@@ -161,7 +131,6 @@
     });
     window.addEventListener('pageshow', function (event) { if (event.persisted) onVisible(); });
     window.addEventListener('resize', alignToolRail);
-    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(alignToolRail).observe(el.wrap);
     renderAll();
     if (client.connected && !subscribedAt) {
       subscribedAt = Date.now();
