@@ -141,7 +141,7 @@
       setText(el.drawer, drawer ? drawer.name : '—');
       if (el.drawerAvatar) setHtml(el.drawerAvatar, drawer ? K.avatarMarkup(drawer) : '');
       setText(el.round, state.round);
-      setText(el.wordSourceLabel, getDictionary().name);
+      setText(el.wordSourceLabel, 'Словарь: ' + getDictionary().name);
       setText(el.word, displayCharacters(word()).map(function (item) { return item.char; }).join(''));
     }
   
@@ -294,14 +294,24 @@
     }
 
     function renderTimer() {
-      if (!state) { setText(el.timer, '--:--'); return; }
-      var pausedNow = isHitPaused() || !!state.reveal;
-      if (wasHitPaused && !pausedNow) renderTools();
-      wasHitPaused = pausedNow;
-      if (!state.roundMs) { setText(el.timer, '∞'); return; }
-      if (state.waitingForPlayers && !state.reveal) { setText(el.timer, '0:00 · ждём'); return; }
-      var left = Math.ceil(remainingRoundMs() / 1000);
-      setText(el.timer, String(Math.floor(left / 60)).padStart(2, '0') + ':' + String(left % 60).padStart(2, '0'));
+      var danger = false;
+      if (!state) {
+        setText(el.timer, '--:--');
+      } else {
+        var pausedNow = isHitPaused() || !!state.reveal;
+        if (wasHitPaused && !pausedNow) renderTools();
+        wasHitPaused = pausedNow;
+        if (!state.roundMs) {
+          setText(el.timer, '∞');
+        } else if (state.waitingForPlayers && !state.reveal) {
+          setText(el.timer, '0:00 · ждём');
+        } else {
+          var left = Math.ceil(remainingRoundMs() / 1000);
+          danger = !pausedNow && left < 30;
+          setText(el.timer, String(Math.floor(left / 60)).padStart(2, '0') + ':' + String(left % 60).padStart(2, '0'));
+        }
+      }
+      if (el.timer && el.timer.classList) el.timer.classList.toggle('timer-danger', danger);
     }
   
     function renderAll() {
