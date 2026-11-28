@@ -2,6 +2,7 @@
 (function (G) {
   with (G) {
     var connectedOnce = false;
+    var metaOwned = false;
     var lastResyncAt = 0;
     var skipOrphanUntil = 0;
     var ignoreRetainedCanvasUntil = 0;
@@ -23,12 +24,20 @@
       var local = null;
       K.getRooms().forEach(function (r) { if (r.slug === room) local = r; });
       var dict = local && local.dictionary ? local.dictionary : fallbackDictionary();
+      /* Гость, пришедший по ссылке, не имеет комнаты в своём локальном списке.
+         Он не должен объявлять себя создателем и перезаписывать retained-meta:
+         иначе имя комнаты и права бана переходили к последнему вошедшему. */
+      var owned = !!local || room === K.DEFAULT_ROOM;
+      if (local && local.creatorId && local.creatorId !== myId &&
+          !(local.creatorFingerprint && local.creatorFingerprint === myFingerprint)) {
+        owned = false;
+      }
       meta = {
         slug: room,
         name: room === K.DEFAULT_ROOM ? 'Общая' : (local ? local.name : room),
-        creatorId: local ? (local.creatorId || '') : (room === K.DEFAULT_ROOM ? '' : myId),
-        creatorName: local ? local.creatorName : profile.name,
-        creatorFingerprint: local ? (local.creatorFingerprint || '') : (room === K.DEFAULT_ROOM ? '' : myFingerprint),
+        creatorId: local ? (local.creatorId || '') : '',
+        creatorName: local ? (local.creatorName || '') : '',
+        creatorFingerprint: local ? (local.creatorFingerprint || '') : '',
         dictionary: dict,
         dictionaryIds: local && Array.isArray(local.dictionaryIds) && local.dictionaryIds.length ? local.dictionaryIds : [dict.id],
         dictionaryPool: local && Array.isArray(local.dictionaryPool) && local.dictionaryPool.length
@@ -38,7 +47,10 @@
             : [dict]),
         createdAt: local ? local.createdAt : Date.now()
       };
-      if (client.connected) K.publish(client, K.topic(room, 'meta'), meta, true);
+      metaOwned = owned;
+      /* Публикуем meta только настоящий создатель. Остальные ждут retained-
+         сообщение и подставляют его словарь и имя. */
+      if (client.connected && metaOwned) K.publish(client, K.topic(room, 'meta'), meta, true);
       applyMeta();
     }
   
@@ -81,6 +93,9 @@
          «ушедшим» и не забирает у него ход. */
       presenceReadyAt = subscribedAt + 15000;
       publishPresence(true);
+      /* Создатель восстанавливает свою meta после переподключения: раньше
+         её мог перезаписать гость, не нашедший комнату в своём списке. */
+      if (metaOwned) K.publish(client, K.topic(room, 'meta'), meta, true);
       if (wasConnected && state) {
         resyncRoom('переподключение');
       } else {
@@ -153,7 +168,7 @@
     /* Переподключение и возврат в вкладку не должны продолжать «свою игру».
        Заново подписываемся на retained-темы и принимаем более свежее состояние
        комнаты, сбрасывая локальные предохранители хода. */
-    function resyncRoom(reason) {
+    function resyncRoom(reason, quiet) {
       if (sessionKicked || !client || !client.connected) return;
       var now = Date.now();
       if (now - lastResyncAt < 1200) return;
@@ -166,11 +181,13 @@
         clearTimeout(resyncWatchTimer);
         resyncWatchTimer = null;
       }
-      if (typeof showConnectionOverlay === 'function') {
-        showConnectionOverlay('синхронизация', 'Сверяем состояние комнаты...');
+      if (!quiet) {
+        if (typeof showConnectionOverlay === 'function') {
+          showConnectionOverlay('синхронизация', 'Сверяем состояние комнаты...');
+        }
+        el.connection.textContent = 'синхронизация...';
+        el.connection.classList.remove('online');
       }
-      el.connection.textContent = 'синхронизация...';
-      el.connection.classList.remove('online');
       var topics = roomTopics();
       try { client.unsubscribe(topics); } catch (error) {}
       client.subscribe(topics, { qos: 1 });
@@ -273,6 +290,9 @@
            вернуть чужого создателя раньше, чем создастся новое состояние. */
         if (packet && packet.retain && Date.now() < ignoreRetainedMetaUntil) return;
         meta = data;
+        metaOwned = !!(meta.creatorId
+          ? meta.creatorId === myId
+          : (meta.creatorFingerprint && meta.creatorFingerprint === myFingerprint));
         applyMeta();
         return;
       }
@@ -552,6 +572,7 @@
       ignoreRetainedPresenceUntil = Date.now() + 5000;
       state = null;
       meta = null;
+      metaOwned = false;
       presence = {};
       stateSeen = false;
       canvasSeen = false;
@@ -616,6 +637,9 @@
 
     function createInitialState() {
       ensureMeta();
+      /* Гость по ссылке не создаёт комнату от чужого имени: иначе его meta
+         забирала права создателя у настоящего владельца комнаты. */
+      if (!metaOwned && room !== K.DEFAULT_ROOM) return;
       var peers = activePeers();
       var self = {
         id: myId, name: profile.name, color: profile.color, avatar: profile.avatar,
@@ -683,6 +707,10 @@
       if (initialStateTimer) clearTimeout(initialStateTimer);
       initialStateTimer = setTimeout(function () {
         if (state || stateSeen || canvasSeen || pendingCanvas) return;
+        if (resyncPending) {
+          scheduleInitialState();
+          return;
+        }
         if (!client.connected || !subscribedAt) {
           scheduleInitialState();
           return;
@@ -694,6 +722,7 @@
            ждёт дольше и не пересоздаёт чужую комнату: именно преждевременный
            createInitialState обнулял холст у ведущего. Заброшенную комнату
            вправе пересоздать первый пришедший игрок. */
+        if (meta && !metaOwned && room !== K.DEFAULT_ROOM) return;
         if (peers.length && meta && (meta.creatorId || meta.creatorFingerprint) && !isCreator()) return;
         var first = !peers.length || peers.every(function (p) {
           return (Number(p.joinedAt) || 0) >= sessionJoinedAt;
