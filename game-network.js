@@ -63,7 +63,9 @@
       client.subscribe(roomTopics(), { qos: 1 });
     }
   
-    client = K.connect('play-' + room + '-' + myId, willMessage);
+    /* Отпечаток вкладки в clientId: одинаковый профиль на двух устройствах не
+       должен выбивать соединение другого игрока. */
+    client = K.connect('play-' + room + '-' + myId + '-' + (G.sessionTabId || K.uid()), willMessage);
   
     client.on('connect', function () {
       if (sessionKicked) return;
@@ -324,6 +326,11 @@
         if (resyncPending) resyncStateSeen = true;
         if (state && Number(data.round) < Number(state.round)) return;
         if (state && Number(data.round) > Number(state.round) + 1) return;
+        /* Расхождение id ведущего лечим до проверки свежести: обе стороны могли
+           опубликовать свои копии, и каждая считает чужую «старой». */
+        var previousDrawer = state ? state.drawer : null;
+        var drawerConsensusChanged = state && typeof consensusResolveDrawer === 'function'
+          ? consensusResolveDrawer(state, data) : false;
         /* Единственный критерий свежести — updatedAt. Старый код сравнивал
            ещё и startedAt и потому не давал двум копиям сойтись на одном
            раунде даже после переподключения. */
@@ -331,7 +338,6 @@
         if (state && Number(data.updatedAt || 0) === Number(state.updatedAt || 0) &&
             state.updatedBy && String(data.updatedBy || '') < String(state.updatedBy)) return;
         var previousRound = state ? state.round + ':' + state.wordIndex : null;
-        var previousDrawer = state ? state.drawer : null;
         var merged = mergeState(normalizeState(data), state);
         state = merged.state;
         Object.keys(remoteDrafts).forEach(function (id) {
@@ -373,8 +379,24 @@
           if (isDrawer()) scheduleCanvasSnapshot(200);
         }
         if (previousDrawer && previousDrawer !== state.drawer) {
+          /* Смена ведущего без смены раунда тоже обнуляет историю холста:
+             иначе старый seq заставляет отклонять снимки нового художника. */
           handledRotation = null;
           lastRotationAt = 0;
+          remoteDrafts = {};
+          localDraft = null;
+          drawing = false;
+          canvasRound = 0;
+          canvasVersion = 0;
+          canvasOwner = '';
+          pendingCanvas = null;
+          pendingStrokes = {};
+          futureStrokes = {};
+          futureDeletions = {};
+          deletedStrokes = {};
+          drawerMissingSince = 0;
+          drawerOfflineAt = 0;
+          if (isDrawer()) scheduleCanvasSnapshot(200);
         }
         if (localDraft && !isDrawer()) {
           localDraft = null;
@@ -389,6 +411,7 @@
         if (state.reveal) scheduleRevealResolution(state.reveal);
         if (state.hitInfo) scheduleHitResolution(state.hitInfo);
         if (merged.changed) publishState();
+        if (drawerConsensusChanged) publishState(true);
         if (clearAbandonedWaiting()) return;
         if (typeof resumeWaitingRound === 'function') resumeWaitingRound();
         ensureDrawer();
@@ -401,6 +424,19 @@
         if (packet && packet.retain && Date.now() < ignoreRetainedPresenceUntil) return;
         if (!data.id) return;
         if (isPlayerBanned(data)) return;
+        /* Один profile.id на двух устройствах — не два игрока, а дубликат.
+           Оставляем более свежую вкладку по тем же меткам, что и session guard. */
+        if (data.id === myId && data.online !== false && data.sessionTabId &&
+            G.sessionTabId && data.sessionTabId !== G.sessionTabId) {
+          var sameIdAt = Number(data.sessionClaimAt) || Number(data.ts) || 0;
+          var sameIdSeq = Number(data.sessionClaimSeq) || 0;
+          var localIdAt = Number(G.sessionClaimAt) || 0;
+          var localIdSeq = Number(G.sessionClaimSeq) || 0;
+          var sameIdIsNewer = sameIdAt > localIdAt ||
+            (sameIdAt === localIdAt && sameIdSeq > localIdSeq);
+          if (sameIdIsNewer) kickForDuplicateSession();
+          return;
+        }
         /* Обычная и приватная вкладки одного браузера не обмениваются
            BroadcastChannel/localStorage, но имеют общий отпечаток. MQTT
            гарантирует, что останется только самая свежая вкладка. */
@@ -600,7 +636,9 @@
         return !(player && player.noDraw);
       });
       var drawerPool = willingIds.length ? willingIds : ids;
-      var drawer = drawerPool[Math.floor(Math.random() * drawerPool.length)] || myId;
+      var drawer = (typeof consensusPick === 'function'
+        ? consensusPick(drawerPool, room + ':init')
+        : drawerPool[Math.floor(Math.random() * drawerPool.length)]) || myId;
       var drawerProfile = players.filter(function (p) { return p.id === drawer; })[0];
       var drawerBg = drawerProfile && (drawerProfile.bgColor ||
         (drawerProfile.avatar && drawerProfile.avatar.bg));
