@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=39">
+  <link rel="stylesheet" href="styles.css?v=40">
 </head>
 <body data-page="game" class="syncing">
   <main class="game-shell">
@@ -43,6 +43,15 @@
         <div class="round-info">
           <span class="drawer-chip"><span class="drawer-avatar" id="drawerAvatar"></span><span class="chip-dot"></span><b id="drawerName">—</b></span>
           <span class="timer" id="timerText">05:00</span>
+          <span class="panel-actions mobile-leave">
+            <button class="panel-leave js-leave-room" type="button" title="Выйти из комнаты" aria-label="Выйти из комнаты">
+              <svg xmlns="http://w3.org" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                <polyline points="16 17 21 12 16 7"/>
+                <line x1="21" y1="12" x2="9" y2="12"/>
+              </svg>
+            </button>
+          </span>
         </div>
       </div>
 
@@ -87,7 +96,7 @@
         </span>
       </div>
 
-      <div class="chat-source"><span class="label" id="wordSourceLabel">Словарь</span></div>
+      <div class="chat-source"><span class="label" id="wordSourceLabel">Словарь: —</span></div>
       <section class="card tab-panel chat-panel" data-panel="chat">
         <div class="chat-stream">
           <div class="system-feed" id="systemFeed" aria-live="polite"></div>
@@ -228,23 +237,23 @@
     </form>
   </dialog>
 
-  <script src="mqtt.min.js?v=39"></script>
-  <script src="app.js?v=39"></script>
-  <script src="game-icons.js?v=39"></script>
-  <script src="game-state.js?v=39"></script>
-  <script src="game-audio.js?v=39"></script>
-  <script src="game-words.js?v=39"></script>
-  <script src="game-room.js?v=39"></script>
-  <script src="game-guard.js?v=39"></script>
-  <script src="game-consensus.js?v=39"></script>
-  <script src="game-palette.js?v=39"></script>
-  <script src="game-session.js?v=39"></script>
-  <script src="game-brushes.js?v=39"></script>
-  <script src="game-render.js?v=39"></script>
-  <script src="game-network.js?v=39"></script>
-  <script src="game-canvas.js?v=39"></script>
-  <script src="game-controls.js?v=39"></script>
-  <script src="game-ui.js?v=39"></script>
-  <script src="game.js?v=39"></script>
+  <script src="mqtt.min.js?v=40"></script>
+  <script src="app.js?v=40"></script>
+  <script src="game-icons.js?v=40"></script>
+  <script src="game-state.js?v=40"></script>
+  <script src="game-audio.js?v=40"></script>
+  <script src="game-words.js?v=40"></script>
+  <script src="game-room.js?v=40"></script>
+  <script src="game-guard.js?v=40"></script>
+  <script src="game-consensus.js?v=40"></script>
+  <script src="game-palette.js?v=40"></script>
+  <script src="game-session.js?v=40"></script>
+  <script src="game-brushes.js?v=40"></script>
+  <script src="game-render.js?v=40"></script>
+  <script src="game-network.js?v=40"></script>
+  <script src="game-canvas.js?v=40"></script>
+  <script src="game-controls.js?v=40"></script>
+  <script src="game-ui.js?v=40"></script>
+  <script src="game.js?v=40"></script>
 </body>
 </html>
