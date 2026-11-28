@@ -12,8 +12,25 @@
   var pending = [];
   var unlocked = false;
   var audioContext = null;
+  var soundEnabled = G.soundEnabled !== false;
+
+  function setEnabled(value) {
+    soundEnabled = !!value;
+    if (!soundEnabled) {
+      pending.length = 0;
+      Object.keys(elements).forEach(function (name) {
+        try {
+          elements[name].pause();
+          elements[name].currentTime = 0;
+        } catch (error) {}
+      });
+      return;
+    }
+    unlock();
+  }
 
   function unlock() {
+    if (!soundEnabled) return;
     /* Короткий звук в AudioContext снимает блокировку автовоспроизведения
        после первого реального действия игрока на странице. */
     try {
@@ -48,7 +65,7 @@
   }
 
   function play(name) {
-    if (!SOURCES[name]) return;
+    if (!soundEnabled || !SOURCES[name]) return;
     unlock();
     try {
       var audio = element(name);
@@ -99,6 +116,6 @@
     }
   }
 
-  G.audio = { unlock: unlock, play: play };
+  G.audio = { unlock: unlock, play: play, setEnabled: setEnabled };
   G.updateSounds = updateSounds;
 })(window.KROKO_GAME);

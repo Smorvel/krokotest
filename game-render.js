@@ -199,6 +199,13 @@
       if (document.activeElement !== el.roundMinInput) el.roundMinInput.value = minutes;
       el.disableHintsInput.checked = !!(state && state.hintsDisabled);
       el.disableHintsInput.disabled = !isCreator();
+      if (el.noDrawInput && document.activeElement !== el.noDrawInput) el.noDrawInput.checked = !!noDraw;
+      if (el.soundOffInput && document.activeElement !== el.soundOffInput) el.soundOffInput.checked = !soundEnabled;
+      if (el.playPrefsNote) {
+        el.playPrefsNote.textContent = soundEnabled
+          ? 'Настройки сохраняются в этом браузере. Отказ от рисования действует со следующего раунда; если угадаете слово, вы всё равно станете художником.'
+          : 'Звуки выключены в этом браузере. Настройки сохраняются здесь же.';
+      }
       if (document.activeElement !== el.settingsName) el.settingsName.value = profile.name;
       renderDictChecks();
       renderInlineDicts();

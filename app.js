@@ -194,6 +194,8 @@
         brushAlpha: 100,
         smoothing: false,
         shapeMode: 'square',
+        noDraw: false,
+        soundEnabled: true,
         fingerprint: getFingerprint(),
         recentColors: ['#000000', '#ffffff', '#ef4444', '#38bdf8'],
         recentBgColors: ['#252932', '#ffffff', '#111827']
@@ -214,6 +216,8 @@
     if (!Number(profile.brushAlpha)) profile.brushAlpha = 100;
     if (typeof profile.smoothing !== 'boolean') profile.smoothing = false;
     if (!profile.shapeMode) profile.shapeMode = 'square';
+    if (typeof profile.noDraw !== 'boolean') profile.noDraw = false;
+    if (typeof profile.soundEnabled !== 'boolean') profile.soundEnabled = true;
     if (!profile.fingerprint) profile.fingerprint = getFingerprint();
     return profile;
   }

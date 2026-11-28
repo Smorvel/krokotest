@@ -1,6 +1,13 @@
 /* MQTT subscriptions and room state handling. */
 (function (G) {
   with (G) {
+    var connectedOnce = false;
+    var lastResyncAt = 0;
+    var skipOrphanUntil = 0;
+    var resyncPending = false;
+    var resyncStateSeen = false;
+    var resyncWatchTimer = null;
+
     function applyMeta() {
       if (!meta) return;
       if (room === K.DEFAULT_ROOM) meta.name = 'Общая';
@@ -45,6 +52,8 @@
   
     client.on('connect', function () {
       if (sessionKicked) return;
+      var wasConnected = connectedOnce;
+      connectedOnce = true;
       showConnectionOverlay('синхронизация', 'Подключаемся к комнате...');
       el.connection.textContent = 'онлайн';
       el.connection.classList.add('online');
@@ -61,8 +70,12 @@
          «ушедшим» и не забирает у него ход. */
       presenceReadyAt = subscribedAt + 15000;
       publishPresence(true);
-      scheduleInitialState();
-      scheduleOrphanCheck();
+      if (wasConnected && state) {
+        resyncRoom('переподключение');
+      } else {
+        scheduleInitialState();
+        scheduleOrphanCheck();
+      }
       /* Пустая комната должна начать рисунок быстро, но retained-presence
          успевает прийти: повторяем проверку хода после короткого окна. */
       setTimeout(function () {
@@ -100,6 +113,74 @@
       el.connection.classList.remove('online');
     });
   
+    function isSyncPending() {
+      return resyncPending;
+    }
+
+    function finishResync() {
+      if (!resyncPending) return;
+      if (resyncWatchTimer) {
+        clearTimeout(resyncWatchTimer);
+        resyncWatchTimer = null;
+      }
+      resyncPending = false;
+      if (typeof markSynced === 'function') markSynced();
+    }
+
+    function watchResync() {
+      if (!resyncPending || !client.connected) return;
+      /* Окно уходит, только когда после повторной подписки пришло состояние
+         комнаты (или создалось новое для пустой комнаты). */
+      if (resyncStateSeen) {
+        finishResync();
+        return;
+      }
+      resyncWatchTimer = setTimeout(watchResync, 700);
+    }
+
+    /* Переподключение и возврат в вкладку не должны продолжать «свою игру».
+       Заново подписываемся на retained-темы и принимаем более свежее состояние
+       комнаты, сбрасывая локальные предохранители хода. */
+    function resyncRoom(reason) {
+      if (sessionKicked || !client || !client.connected) return;
+      var now = Date.now();
+      if (now - lastResyncAt < 1200) return;
+      lastResyncAt = now;
+      skipOrphanUntil = now + 15000;
+      resyncPending = true;
+      resyncStateSeen = false;
+      if (resyncWatchTimer) {
+        clearTimeout(resyncWatchTimer);
+        resyncWatchTimer = null;
+      }
+      if (typeof showConnectionOverlay === 'function') {
+        showConnectionOverlay('синхронизация', 'Сверяем состояние комнаты...');
+      }
+      el.connection.textContent = 'синхронизация...';
+      el.connection.classList.remove('online');
+      var topics = [
+        K.topic(room, 'meta'), K.topic(room, 'state'), K.topic(room, 'presence/+'),
+        K.topic(room, 'draft/+'), K.topic(room, 'stroke/+'), K.topic(room, 'canvas/+'),
+        K.topic(room, 'chat/+')
+      ];
+      try { client.unsubscribe(topics); } catch (error) {}
+      client.subscribe(topics, { qos: 1 });
+      subscribedAt = Date.now();
+      presenceReadyAt = subscribedAt + 15000;
+      handledRotation = null;
+      lastRotationAt = 0;
+      drawerMissingSince = 0;
+      drawerOfflineAt = 0;
+      if (canvasSnapshotTimer) {
+        clearTimeout(canvasSnapshotTimer);
+        canvasSnapshotTimer = null;
+      }
+      publishPresence(true);
+      scheduleInitialState();
+      scheduleOrphanCheck();
+      resyncWatchTimer = setTimeout(watchResync, 1500);
+    }
+
     function flushPendingStrokes() {
       var pending = Object.keys(pendingStrokes).map(function (id) { return pendingStrokes[id]; });
       pendingStrokes = {};
@@ -217,12 +298,15 @@
         stateSeen = true;
         if (state && Number(data.round) < Number(state.round)) return;
         if (state && Number(data.round) > Number(state.round) + 1) return;
-        if (state && Number(data.round) === Number(state.round) && Number(data.startedAt) &&
-            Number(data.startedAt) < Number(state.startedAt)) return;
-        /* Более ранняя метка времени не должна задерживать новый раунд. */
-        if (state && Number(data.round) <= Number(state.round) &&
-            Number(data.updatedAt) < Number(state.updatedAt || 0)) return;
+        /* Единственный критерий свежести — updatedAt. Старый код сравнивал
+           ещё и startedAt и потому не давал двум копиям сойтись на одном
+           раунде даже после переподключения. */
+        if (state && Number(data.updatedAt || 0) < Number(state.updatedAt || 0)) return;
+        if (state && Number(data.updatedAt || 0) === Number(state.updatedAt || 0) &&
+            state.updatedBy && String(data.updatedBy || '') < String(state.updatedBy)) return;
         var previousRound = state ? state.round + ':' + state.wordIndex : null;
+        var previousDrawer = state ? state.drawer : null;
+        if (resyncPending) resyncStateSeen = true;
         var merged = mergeState(normalizeState(data), state);
         state = merged.state;
         Object.keys(remoteDrafts).forEach(function (id) {
@@ -243,6 +327,8 @@
           publishState();
         }
         if (previousRound && previousRound !== state.round + ':' + state.wordIndex) {
+          handledRotation = null;
+          lastRotationAt = 0;
           remoteDrafts = {};
           localDraft = null;
           drawing = false;
@@ -261,6 +347,10 @@
           drawerOfflineAt = 0;
           if (isDrawer()) scheduleCanvasSnapshot(200);
         }
+        if (previousDrawer && previousDrawer !== state.drawer) {
+          handledRotation = null;
+          lastRotationAt = 0;
+        }
         if (localDraft && !isDrawer()) {
           localDraft = null;
           drawing = false;
@@ -276,6 +366,7 @@
         if (merged.changed) publishState();
         ensureDrawer();
         checkTimeout();
+        finishResync();
         return;
       }
   
@@ -424,6 +515,12 @@
       orphanCheckTimer = setTimeout(function () {
         orphanCheckTimer = null;
         if (sessionKicked || !client.connected || !subscribedAt) return;
+        /* После переподключения/возврата в вкладку старое состояние комнаты
+           ещё может быть живым: даём время прислать retained-обновления. */
+        if (skipOrphanUntil && Date.now() < skipOrphanUntil) {
+          scheduleOrphanCheck();
+          return;
+        }
         if (activePeers().length) return;
         /* Медленный брокер может прислать retained-состояние позже. Пока оно
            не пришло и окно синхронизации не закрылось, ждём. */
@@ -445,14 +542,20 @@
       var peers = activePeers();
       var self = {
         id: myId, name: profile.name, color: profile.color, avatar: profile.avatar,
-        fingerprint: myFingerprint, joinedAt: sessionJoinedAt, ts: Date.now(), online: true
+        fingerprint: myFingerprint, joinedAt: sessionJoinedAt, ts: Date.now(),
+        online: true, noDraw: !!noDraw
       };
       var players = peers.concat(peers.some(function (p) { return p.id === myId; }) ? [] : [self])
         .sort(function (a, b) { return (Number(a.joinedAt) || 0) - (Number(b.joinedAt) || 0); });
       var ids = players.map(function (p) { return p.id; });
-      /* Пустая комната начинает рисование сразу с создателя, а не с призрака
-         из retained-presence. */
-      var drawer = ids[0] || myId;
+      /* Пустая комната начинает рисование сразу с первого реального игрока,
+         а не с призрака из retained-presence. Кто поставил «не хочу рисовать»,
+         в стартовом ходе участвует только если желающих больше нет. */
+      var willingIds = ids.filter(function (id) {
+        var player = players.filter(function (p) { return p.id === id; })[0];
+        return !(player && player.noDraw);
+      });
+      var drawer = (willingIds.length ? willingIds[0] : ids[0]) || myId;
       var dict = getDictionary();
   
       state = normalizeState({
@@ -487,6 +590,7 @@
       handledStart = 0;
       publishState();
       renderAll();
+      finishResync();
     }
   
     function scheduleInitialState() {
@@ -522,6 +626,9 @@
     G.ensureMeta = ensureMeta;
     G.createInitialState = createInitialState;
     G.scheduleInitialState = scheduleInitialState;
+    G.resyncRoom = resyncRoom;
+    G.isSyncPending = isSyncPending;
+    G.finishResync = finishResync;
     G.flushPendingCanvas = flushPendingCanvas;
     G.flushPendingStrokes = flushPendingStrokes;
     G.flushFutureEvents = flushFutureEvents;

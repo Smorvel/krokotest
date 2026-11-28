@@ -172,7 +172,31 @@
       publishState();
       renderAll();
     });
-  
+
+    el.noDrawInput.addEventListener('change', function () {
+      profile.noDraw = !!el.noDrawInput.checked;
+      noDraw = profile.noDraw;
+      K.setProfile(profile);
+      publishPresence(true);
+      systemMessage(noDraw
+        ? 'Вы не будете выбраны художником в следующих раундах.'
+        : 'Вы снова участвуете в очереди художников.');
+      renderAll();
+    });
+
+    el.soundOffInput.addEventListener('change', function () {
+      profile.soundEnabled = !el.soundOffInput.checked;
+      soundEnabled = profile.soundEnabled;
+      K.setProfile(profile);
+      if (audio && typeof audio.setEnabled === 'function') audio.setEnabled(soundEnabled);
+      if (el.playPrefsNote) {
+        el.playPrefsNote.textContent = soundEnabled
+          ? 'Настройки сохраняются в этом браузере. Отказ от рисования действует со следующего раунда; если угадаете слово, вы всё равно станете художником.'
+          : 'Звуки выключены в этом браузере. Настройки сохраняются здесь же.';
+      }
+      renderAll();
+    });
+
     function switchPanel(name) {
       activePanel = name;
       el.panelTabs.querySelectorAll('.panel-tab').forEach(function (button) {

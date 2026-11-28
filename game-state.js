@@ -10,6 +10,8 @@
   G.params = new URLSearchParams(location.search);
   G.room = G.params.get('room') || K.DEFAULT_ROOM;
   G.profile = K.getProfile();
+  G.noDraw = !!G.profile.noDraw;
+  G.soundEnabled = G.profile.soundEnabled !== false;
   G.myId = G.profile.id;
   G.myFingerprint = G.profile.fingerprint || K.getFingerprint();
   G.sessionJoinedAt = Date.now();
@@ -185,6 +187,9 @@
     dictNote: document.getElementById('dictNote'),
     roundMinInput: document.getElementById('roundMinInput'),
     disableHintsInput: document.getElementById('disableHintsInput'),
+    noDrawInput: document.getElementById('noDrawInput'),
+    soundOffInput: document.getElementById('soundOffInput'),
+    playPrefsNote: document.getElementById('playPrefsNote'),
     settingsNote: document.getElementById('settingsNote'),
     settingsName: document.getElementById('settingsName'),
     settingsNameSave: document.getElementById('settingsNameSave'),

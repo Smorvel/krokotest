@@ -15,6 +15,10 @@
 
     function markSynced() {
       if (sessionKicked || !client || !client.connected) return;
+      /* Повторная подписка после переподключения/возврата в вкладку ещё не
+         закончена: renderAll не должен прятать окно просто потому, что старое
+         состояние всё ещё лежит в памяти. */
+      if (typeof isSyncPending === 'function' && isSyncPending()) return;
       if (el.loadingOverlay) el.loadingOverlay.hidden = true;
       document.body.classList.remove('syncing');
       syncDone = true;
@@ -79,6 +83,9 @@
       if (sessionKicked) return;
       periodicTick += 1;
       if (client && client.connected) publishPresence(true);
+      /* Скрытая вкладка не ведёт свою игру: таймеры и перевод хода возобновляются
+         только после сверки с брокером при возврате в вкладку. */
+      if (document.hidden) return;
       /* Художник периодически рассылает полный холст: если отдельное событие
          штриха потерялось, следующий снимок всё равно восстановит его у всех.
          Общее состояние шлём реже — оно не несёт рисунок и только дублирует
@@ -103,7 +110,7 @@
     }, 5000);
 
     setInterval(function () {
-      if (sessionKicked) return;
+      if (sessionKicked || document.hidden) return;
       if (client && client.connected) renderTimer();
       if (state) {
         issueHintIfNeeded();
@@ -119,6 +126,15 @@
     renderToolsOnce();
     applyMeta();
     alignToolRail();
+    /* Возврат из фона/свёрнутого окна всегда сверяет состояние с брокером.
+       Иначе скрытая вкладка продолжает свой местный таймер и может объявить
+       себя художником, невидимым остальным игрокам. */
+    function onVisible() {
+      if (!document.hidden && typeof resyncRoom === 'function') resyncRoom('возврат в вкладку');
+    }
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    window.addEventListener('pageshow', function (event) { if (event.persisted) onVisible(); });
     window.addEventListener('resize', alignToolRail);
     if (typeof ResizeObserver !== 'undefined') new ResizeObserver(alignToolRail).observe(el.wrap);
     renderAll();
