@@ -218,6 +218,9 @@
       s.expiredAt = Number(s.expiredAt) || 0;
       s.updatedAt = Number(s.updatedAt) || 0;
       s.updatedBy = s.updatedBy || '';
+      /* Монотонный номер публикации: в отличие от updatedAt, не зависит от
+         системных часов и позволяет всем клиентам выбрать одну копию state. */
+      s.rev = Math.max(0, Math.floor(Number(s.rev) || 0));
       return s;
     }
 
@@ -447,6 +450,7 @@
          публикацию нового раунда всё равно должен разослать: иначе остальные
          останутся на старом раунде с уже показанным словом. */
       if (sessionKicked || !state || !client || !client.connected || (!force && !isStatePublisher())) return;
+      state.rev = (Number(state.rev) || 0) + 1;
       state.updatedAt = Date.now();
       state.updatedBy = myId;
       /* Общее состояние НИКОГДА не несёт рисунок. Единственный источник
