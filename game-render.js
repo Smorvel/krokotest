@@ -227,17 +227,20 @@
       applyColorInputs();
       renderPalettes();
   
-      if (isBannedMe()) el.status.textContent = 'Вы заблокированы в этой комнате';
-      else if (revealing) el.status.textContent = 'Раунд завершён. Следующий раунд скоро.';
-      else if (canDraw) el.status.textContent = 'Вы рисуете слово. Остальные угадывают!';
-      else el.status.textContent = 'Вы угадываете. Рисунок виден без затемнения!';
+      setText(el.status, isBannedMe()
+        ? 'Вы заблокированы в этой комнате'
+        : (revealing
+          ? 'Раунд завершён. Следующий раунд скоро.'
+          : (canDraw
+            ? 'Вы рисуете слово. Остальные угадывают!'
+            : 'Вы угадываете. Рисунок виден без затемнения!')));
       renderSync();
       el.chatInput.disabled = isDrawer() || isBannedMe() || isHitPaused() || revealing;
       el.chatInput.placeholder = revealing
         ? 'Раунд завершён — смотрите слово'
         : (isDrawer() ? 'Вы рисуете — чат недоступен' : (isHitPaused() ? 'Пауза — смотрите анимацию...' : 'Напиши слово...'));
   
-      el.roomBadge.hidden = !isCreator();
+      if (el.roomBadge) el.roomBadge.hidden = !isCreator();
       el.settingsRoomName.textContent = (meta && meta.name) || room;
       el.roundMinInput.disabled = !isCreator();
       var hasPendingTime = !!(state && Number(state.pendingRoundMsAt));
