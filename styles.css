@@ -452,11 +452,12 @@ textarea { resize: vertical; }
 /* Как на croch.ru: при одном-двух сообщениях они висят внизу, а не сверху. */
 .messages > :first-child { margin-top: auto; }
 .chat-stream { position: relative; display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
+.chat-head { flex: 0 0 auto; min-height: 14px; padding: 2px 2px 0; }
 /* Системные события живут отдельной плашкой над сообщениями чата и не
    занимают место в ленте: пользовательские сообщения остаются на своих местах. */
 .system-feed {
   position: absolute;
-  top: 4px;
+  top: 22px;
   right: 4px;
   left: 4px;
   z-index: 4;
@@ -702,14 +703,15 @@ textarea { resize: vertical; }
 }
 /* На широком экране холст дополнительно вписывается в высоту окна, чтобы
    страница не прокручивалась. Минимальный размер 280 px оставляет рисунок
-   видимым даже в очень низком окне. */
-@media (min-width: 821px) and (min-height: 500px) {
-  .canvas-wrap { width: min(100%, 760px, max(280px, calc(100vh - 210px))); }
+   видимым даже в очень низком окне. Нижняя панель и горизонтальный ряд
+   кистей занимают место над холстом, поэтому вычитаем их высоту. */
+@media (min-width: 1100px) and (min-height: 500px) {
+  .canvas-wrap { width: min(100%, 760px, max(280px, calc(100vh - 170px))); }
 }
 /* В узком режиме кисти занимают отдельный горизонтальный ряд между холстом
    и нижней палитрой, поэтому квадрат уменьшается ещё на высоту этого ряда. */
 @media (min-width: 821px) and (max-width: 1099px) and (min-height: 500px) {
-  .canvas-wrap { width: min(100%, 760px, max(280px, calc(100vh - 270px))); }
+  .canvas-wrap { width: min(100%, 760px, max(280px, calc(100vh - 210px))); }
 }
 /* Нативный курсор прячем только у рисующего: угадывающий видит обычную стрелку. */
 body.can-draw .canvas-wrap, body.can-draw #drawCanvas { cursor: none; }
