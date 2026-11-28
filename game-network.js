@@ -287,11 +287,30 @@
       }
       var data = K.parse(message);
       if (!data) return;
-      if (!guardIncoming(topic, data, packet)) return;
       /* Длительность раунда и паузы считаем по локальным часам, чтобы сдвиг
-         времени у одного игрока не завершал раунд у всех остальных. */
-      if (topic === K.topic(room, 'state') && typeof consensusNoteStateClock === 'function') {
-        consensusNoteStateClock(data);
+         времени у одного игрока не завершал раунд у всех остальных. Делаем это
+         ДО guardIncoming: он ограничит чужие метки текущими часами и сотрёт
+         исходную разницу deadline - updatedAt. */
+      var rawClock = null;
+      if (topic === K.topic(room, 'state') && Number(data.v) >= 2 && data.round &&
+          typeof consensusNoteStateClock === 'function') {
+        consensusNoteStateClock(data, !!(packet && packet.retain));
+        rawClock = {
+          startedAt: data.startedAt,
+          deadline: data.deadline,
+          updatedAt: data.updatedAt,
+          reveal: data.reveal
+        };
+      }
+      if (!guardIncoming(topic, data, packet)) return;
+      /* guard проверяет границы, но затем возвращаем исходные метки: подпись
+         локального времени должна находить ту же копию, которую мы только что
+         зафиксировали. */
+      if (rawClock) {
+        data.startedAt = rawClock.startedAt;
+        data.deadline = rawClock.deadline;
+        data.updatedAt = rawClock.updatedAt;
+        data.reveal = rawClock.reveal;
       }
       var metaTopic = K.topic(room, 'meta');
   
