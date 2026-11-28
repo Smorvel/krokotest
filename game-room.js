@@ -478,6 +478,16 @@
       state.rev = (Number(state.rev) || 0) + 1;
       state.updatedAt = Date.now();
       state.updatedBy = myId;
+      /* Каждая публикация подписывает текущий раунд и его ведущего. Тогда
+         задержанная подпись прошлого раунда не сможет вернуть ход ушедшему
+         художнику после законной смены. */
+      state.turnDefense = {
+        round: Number(state.round) || 1,
+        drawer: String(state.drawer || ''),
+        rev: state.rev,
+        by: myId,
+        at: state.updatedAt
+      };
       if (typeof consensusNoteStateClock === 'function') consensusNoteStateClock(state);
       /* Общее состояние НИКОГДА не несёт рисунок. Единственный источник
          холста — canvas/<round> и stroke/<id>. Раньше задержанная копия
