@@ -93,6 +93,8 @@
   G.drawerMissingSince = 0;
   G.drawerSeenAt = 0;
   G.drawerOfflineAt = 0;
+  /* Переподключившийся клиент не забирает ход, пока не закончится сверка. */
+  G.turnLockUntil = 0;
   G.DRAWER_MISSING_GRACE_MS = 45000;
   G.seenChatIds = {};
   G.hitTimer = null;
