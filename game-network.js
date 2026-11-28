@@ -326,17 +326,16 @@
         if (resyncPending) resyncStateSeen = true;
         if (state && Number(data.round) < Number(state.round)) return;
         if (state && Number(data.round) > Number(state.round) + 1) return;
-        /* Расхождение id ведущего лечим до проверки свежести: обе стороны могли
-           опубликовать свои копии, и каждая считает чужую «старой». */
+        /* Свежесть state определяется монотонной версией и детерминированным
+           id автора, а не системными часами. Иначе при разнице часов два
+           клиента навсегда остаются при разных ведущих. */
         var previousDrawer = state ? state.drawer : null;
-        var drawerConsensusChanged = state && typeof consensusResolveDrawer === 'function'
-          ? consensusResolveDrawer(state, data) : false;
-        /* Единственный критерий свежести — updatedAt. Старый код сравнивал
-           ещё и startedAt и потому не давал двум копиям сойтись на одном
-           раунде даже после переподключения. */
-        if (state && Number(data.updatedAt || 0) < Number(state.updatedAt || 0)) return;
-        if (state && Number(data.updatedAt || 0) === Number(state.updatedAt || 0) &&
-            state.updatedBy && String(data.updatedBy || '') < String(state.updatedBy)) return;
+        if (state) {
+          var stateDecision = typeof consensusCompareState === 'function'
+            ? consensusCompareState(state, data)
+            : (Number(data.updatedAt || 0) > Number(state.updatedAt || 0) ? 1 : -1);
+          if (stateDecision <= 0) return;
+        }
         var previousRound = state ? state.round + ':' + state.wordIndex : null;
         var merged = mergeState(normalizeState(data), state);
         state = merged.state;
@@ -411,7 +410,6 @@
         if (state.reveal) scheduleRevealResolution(state.reveal);
         if (state.hitInfo) scheduleHitResolution(state.hitInfo);
         if (merged.changed) publishState();
-        if (drawerConsensusChanged) publishState(true);
         if (clearAbandonedWaiting()) return;
         if (typeof resumeWaitingRound === 'function') resumeWaitingRound();
         ensureDrawer();
