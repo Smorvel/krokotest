@@ -119,6 +119,7 @@
         renderReveal();
         renderSystemFeed();
         if (typeof updateSounds === 'function') updateSounds();
+        if (typeof clearAbandonedWaiting === 'function') clearAbandonedWaiting();
       }
     }, 1000);
 
@@ -140,6 +141,7 @@
       if (now - lastVisibleRefreshAt < 1200) return;
       lastVisibleRefreshAt = now;
       refreshRoom();
+      if (typeof clearAbandonedWaiting === 'function') clearAbandonedWaiting();
     }
     function onHidden() {
       if (client && client.connected) publishPresence(true);
