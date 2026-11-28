@@ -385,6 +385,7 @@
         if (state.reveal) scheduleRevealResolution(state.reveal);
         if (state.hitInfo) scheduleHitResolution(state.hitInfo);
         if (merged.changed) publishState();
+        if (typeof resumeWaitingRound === 'function') resumeWaitingRound();
         ensureDrawer();
         checkTimeout();
         finishResync();
@@ -443,6 +444,7 @@
         /* Новый игрок подписался на комнату: сразу отдаём ему полный холст,
           не дожидаясь очередного пятисекундного снимка. */
         if (data.online !== false && isDrawer()) scheduleCanvasSnapshot(200);
+        if (state && typeof resumeWaitingRound === 'function') resumeWaitingRound();
         if (state) ensureDrawer();
         checkTimeout();
         return;
@@ -564,7 +566,8 @@
       var self = {
         id: myId, name: profile.name, color: profile.color, avatar: profile.avatar,
         fingerprint: myFingerprint, joinedAt: sessionJoinedAt, ts: Date.now(),
-        online: true, noDraw: !!noDraw
+        online: true, noDraw: !!noDraw,
+        bgColor: tool.bg || profile.bgColor || '#252932'
       };
       var players = peers.concat(peers.some(function (p) { return p.id === myId; }) ? [] : [self])
         .sort(function (a, b) { return (Number(a.joinedAt) || 0) - (Number(b.joinedAt) || 0); });
@@ -576,7 +579,12 @@
         var player = players.filter(function (p) { return p.id === id; })[0];
         return !(player && player.noDraw);
       });
-      var drawer = (willingIds.length ? willingIds[0] : ids[0]) || myId;
+      var drawerPool = willingIds.length ? willingIds : ids;
+      var drawer = drawerPool[Math.floor(Math.random() * drawerPool.length)] || myId;
+      var drawerProfile = players.filter(function (p) { return p.id === drawer; })[0];
+      var drawerBg = drawerProfile && (drawerProfile.bgColor ||
+        (drawerProfile.avatar && drawerProfile.avatar.bg));
+      if (!/^#[0-9a-f]{6}$/i.test(String(drawerBg || ''))) drawerBg = '#252932';
       var dict = getDictionary();
   
       state = normalizeState({
@@ -598,16 +606,17 @@
         strokes: [],
         messages: [],
         scores: {},
-        bg: tool.bg || '#252932',
-        bgBy: myId,
+        bg: drawerBg,
+        bgBy: drawer,
         hintSent: false,
+        hintStage: 0,
+        hintLetters: {},
         hintsDisabled: false,
         waitingForPlayers: false,
         expiredAt: 0
       });
       resetRoundTimer();
       chooseNextWord();
-      systemMessage('Комната «' + (meta ? meta.name : 'Общая') + '» готова. Удачи!');
       handledStart = 0;
       publishState();
       renderAll();
