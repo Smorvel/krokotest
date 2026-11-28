@@ -44,14 +44,14 @@
       if (result.hit) {
         state.scores[profile.name] = (state.scores[profile.name] || 0) + 10;
         var single = result.targets.length === 1;
-        var reason = profile.name + (single ? ' угадал! +10 очков.' : ' угадал все слова! +10 очков.');
-        systemMessage(reason);
+        var reason = 'Угадал игрок ' + profile.name + '!';
         /* Фиксируем остаток времени до показа слова, чтобы пауза не съедала
            секунды раунда и была одинаковой у всех игроков. */
         pauseRoundTimer();
         state.hitInfo = {
           id: K.uid(),
           guesserId: myId,
+          guesserName: profile.name,
           text: single ? '🎯 ' + profile.name + ' угадал! +10 очков' : '🎯 Все слова угаданы! +10 очков',
           reason: reason,
           at: Date.now()
@@ -178,9 +178,6 @@
       noDraw = profile.noDraw;
       K.setProfile(profile);
       publishPresence(true);
-      systemMessage(noDraw
-        ? 'Вы не будете выбраны художником в следующих раундах.'
-        : 'Вы снова участвуете в очереди художников.');
       renderAll();
     });
 
@@ -191,7 +188,7 @@
       if (audio && typeof audio.setEnabled === 'function') audio.setEnabled(soundEnabled);
       if (el.playPrefsNote) {
         el.playPrefsNote.textContent = soundEnabled
-          ? 'Настройки сохраняются в этом браузере. Отказ от рисования действует со следующего раунда; если угадаете слово, вы всё равно станете художником.'
+          ? 'Настройки сохраняются в этом браузере. Отказ от рисования действует со следующего раунда: угаданное слово не назначит вас художником.'
           : 'Звуки выключены в этом браузере. Настройки сохраняются здесь же.';
       }
       renderAll();
