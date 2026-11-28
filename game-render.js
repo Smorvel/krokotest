@@ -1,11 +1,25 @@
 /* Room UI rendering. */
 (function (G) {
   with (G) {
+    /* Меняем DOM только при реальном изменении текста: частый тик таймера не
+       должен сбрасывать пользовательское выделение в верхней панели. */
+    function setText(node, value) {
+      if (!node) return;
+      var next = String(value);
+      if (node.textContent !== next) node.textContent = next;
+    }
+
+    function setHtml(node, value) {
+      if (!node || node.dataset.rendered === value) return;
+      node.innerHTML = value;
+      node.dataset.rendered = value;
+    }
+
     function renderPlayers() {
       var players = presentPlayers();
-      el.online.textContent = players.length;
-      el.playersCount.textContent = players.length;
-      el.players.innerHTML = players.map(function (player) {
+      setText(el.online, players.length);
+      setText(el.playersCount, players.length);
+      setHtml(el.players, players.map(function (player) {
         var tag = state && state.drawer === player.id ? 'рисует' : (player.id === myId ? 'вы' : '');
         var ban = isCreator() && player.id !== myId && !isFingerprintBanned(player.fingerprint)
           ? '<button class="ban-btn" type="button" data-ban="' + K.escapeHtml(player.id) + '">бан</button>'
@@ -13,7 +27,7 @@
         return '<li class="player">' + K.avatarMarkup(player) +
           '<span class="player-name">' + K.escapeHtml(player.name) + '</span>' +
           (tag ? '<span class="player-tag">' + tag + '</span>' : '') + ban + '</li>';
-      }).join('');
+      }).join(''));
     }
   
     function renderBanList() {
@@ -49,11 +63,12 @@
       var liveIds = {};
       events.forEach(function (event) { liveIds[event.id] = true; });
 
-      /* Держим уже показанные плашки в DOM до конца анимации ухода, чтобы
-         смена набора событий не обрывала её мгновенной перерисовкой. */
+      /* Не переставляем уже показанные плашки: insertBefore существующего узла
+         перезапускает CSS-анимацию и выглядит как мерцание при любом событии
+         в комнате. Новые плашки просто добавляются в конец. */
       events.forEach(function (event) {
         var node = systemNoticeNodes[event.id];
-        if (!node || !node.parentNode) {
+        if (!node) {
           node = document.createElement('div');
           node.className = 'system-notice';
           node.dataset.kind = typeof systemNoticeKind === 'function'
@@ -64,17 +79,10 @@
         if (node.leaveTimer) {
           clearTimeout(node.leaveTimer);
           node.leaveTimer = null;
+          node.classList.remove('leaving');
         }
-        node.classList.remove('leaving');
+        if (!node.parentNode) el.systemFeed.appendChild(node);
       });
-
-      var wanted = events.map(function (event) { return systemNoticeNodes[event.id]; });
-      var children = Array.prototype.slice.call(el.systemFeed.children);
-      for (var i = 0; i < wanted.length; i += 1) {
-        if (children[i] !== wanted[i]) {
-          el.systemFeed.insertBefore(wanted[i], children[i] || null);
-        }
-      }
 
       Object.keys(systemNoticeNodes).forEach(function (id) {
         if (liveIds[id]) return;
@@ -130,11 +138,11 @@
       if (!state) return;
       var players = presentPlayers();
       var drawer = players.filter(function (p) { return p.id === state.drawer; })[0];
-      el.drawer.textContent = drawer ? drawer.name : '—';
-      if (el.drawerAvatar) el.drawerAvatar.innerHTML = drawer ? K.avatarMarkup(drawer) : '';
-      if (el.round) el.round.textContent = state.round;
-      el.wordSourceLabel.textContent = getDictionary().name;
-      el.word.textContent = displayCharacters(word()).map(function (item) { return item.char; }).join('');
+      setText(el.drawer, drawer ? drawer.name : '—');
+      if (el.drawerAvatar) setHtml(el.drawerAvatar, drawer ? K.avatarMarkup(drawer) : '');
+      setText(el.round, state.round);
+      setText(el.wordSourceLabel, getDictionary().name);
+      setText(el.word, displayCharacters(word()).map(function (item) { return item.char; }).join(''));
     }
   
     function swatchButton(color, className) {
@@ -279,14 +287,14 @@
     }
 
     function renderTimer() {
-      if (!state) { el.timer.textContent = '--:--'; return; }
+      if (!state) { setText(el.timer, '--:--'); return; }
       var pausedNow = isHitPaused() || !!state.reveal;
       if (wasHitPaused && !pausedNow) renderTools();
       wasHitPaused = pausedNow;
-      if (!state.roundMs) { el.timer.textContent = '∞'; return; }
-      if (state.waitingForPlayers && !state.reveal) { el.timer.textContent = '0:00 · ждём'; return; }
+      if (!state.roundMs) { setText(el.timer, '∞'); return; }
+      if (state.waitingForPlayers && !state.reveal) { setText(el.timer, '0:00 · ждём'); return; }
       var left = Math.ceil(remainingRoundMs() / 1000);
-      el.timer.textContent = String(Math.floor(left / 60)).padStart(2, '0') + ':' + String(left % 60).padStart(2, '0');
+      setText(el.timer, String(Math.floor(left / 60)).padStart(2, '0') + ':' + String(left % 60).padStart(2, '0'));
     }
   
     function renderAll() {
