@@ -195,6 +195,64 @@
       return true;
     }
 
+    /* Часовые метки состояния пишутся часами автора. Если у одного игрока
+       часы ушли вперёд на 30 секунд, он заканчивает раунд сразу после его
+       старта и «Время вышло!» появляется снова и снова. Источник длительности
+       — разница deadline - updatedAt внутри одной и той же копии: она не
+       зависит от сдвига часов. При получении копии запоминаем её локальный
+       момент, а затем все таймеры считаем уже по локальным часам. */
+    var clockCache = { sig: '', deadlineAt: 0, revealSig: '', revealUntil: 0 };
+
+    function clockSignature(state) {
+      if (!state) return '';
+      return [
+        Number(state.round) || 0,
+        Number(state.wordIndex) || 0,
+        Number(state.startedAt) || 0,
+        Number(state.deadline) || 0,
+        Number(state.rev) || 0,
+        String(state.updatedBy || ''),
+        Number(state.updatedAt) || 0
+      ].join('|');
+    }
+
+    function noteStateClock(raw) {
+      if (!raw || typeof raw !== 'object') return;
+      var sig = clockSignature(raw);
+      if (!sig || sig === clockCache.sig) return;
+      var now = Date.now();
+      var updatedAt = Number(raw.updatedAt) || 0;
+      var deadline = Number(raw.deadline) || 0;
+      var span = deadline && updatedAt ? deadline - updatedAt : 0;
+      clockCache.sig = sig;
+      clockCache.deadlineAt = deadline && span >= 0
+        ? now + Math.min(span, 24 * 60 * 60 * 1000)
+        : 0;
+      var reveal = raw.reveal;
+      var until = reveal && Number(reveal.until) || 0;
+      var revealSpan = until && updatedAt ? until - updatedAt : 0;
+      clockCache.revealSig = reveal && until ? String(reveal.id) + '|' + until + '|' + updatedAt : '';
+      clockCache.revealUntil = revealSpan >= 0
+        ? now + Math.min(revealSpan, 10 * 60 * 1000)
+        : 0;
+    }
+
+    function localDeadline(state) {
+      if (!state) return 0;
+      if (clockCache.sig === clockSignature(state) && clockCache.deadlineAt) {
+        return clockCache.deadlineAt;
+      }
+      return Number(state.deadline) || 0;
+    }
+
+    function localRevealUntil(state) {
+      if (!state || !state.reveal) return 0;
+      var until = Number(state.reveal.until) || 0;
+      var sig = String(state.reveal.id) + '|' + until + '|' + (Number(state.updatedAt) || 0);
+      if (clockCache.revealSig === sig && clockCache.revealUntil) return clockCache.revealUntil;
+      return until;
+    }
+
     /* Возвращаем чужую копию в наш раунд, но сохраняем чат, очки и реакции.
        Если ход пытались перевести на новый раунд, восстанавливаем все поля,
        которые описывают текущий раунд, и ставим подпись защиты: она позволяет
@@ -241,5 +299,8 @@
     G.consensusSanitizeDrawer = sanitizeDrawer;
     G.consensusAcceptsSignedDefense = acceptsSignedDefense;
     G.consensusNeedsFullTurnGrace = needsFullTurnGrace;
+    G.consensusNoteStateClock = noteStateClock;
+    G.consensusLocalDeadline = localDeadline;
+    G.consensusLocalRevealUntil = localRevealUntil;
   }
 })(window.KROKO_GAME);
