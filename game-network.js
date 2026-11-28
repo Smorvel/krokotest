@@ -4,6 +4,8 @@
     var connectedOnce = false;
     var lastResyncAt = 0;
     var skipOrphanUntil = 0;
+    var ignoreRetainedCanvasUntil = 0;
+    var ignoreRetainedPresenceUntil = 0;
     var resyncPending = false;
     var resyncStateSeen = false;
     var resyncStartedAt = 0;
@@ -273,6 +275,7 @@
       }
   
       if (topic.indexOf(K.topic(room, 'canvas/')) === 0) {
+        if (packet && packet.retain && Date.now() < ignoreRetainedCanvasUntil) return;
         if (!data || !Array.isArray(data.strokes) || !data.round || !data.by) return;
         if (isPlayerBanned({ id: data.by })) return;
         /* Снимок принимается только от художника текущего раунда. Иначе
@@ -385,6 +388,7 @@
         if (state.reveal) scheduleRevealResolution(state.reveal);
         if (state.hitInfo) scheduleHitResolution(state.hitInfo);
         if (merged.changed) publishState();
+        if (clearAbandonedWaiting()) return;
         if (typeof resumeWaitingRound === 'function') resumeWaitingRound();
         ensureDrawer();
         checkTimeout();
@@ -393,6 +397,7 @@
       }
   
       if (topic.indexOf(K.topic(room, 'presence/')) === 0) {
+        if (packet && packet.retain && Date.now() < ignoreRetainedPresenceUntil) return;
         if (!data.id) return;
         if (isPlayerBanned(data)) return;
         /* Обычная и приватная вкладки одного браузера не обмениваются
@@ -506,8 +511,13 @@
       }
       retainedTopics = {};
       ignoreRetainedMetaUntil = Date.now() + 5000;
+      /* Поздний retained-снимок старого ведущего не должен снова заблокировать
+        создание свежего раунда после очистки «брошенного» ожидания. */
+      ignoreRetainedCanvasUntil = Date.now() + 5000;
+      ignoreRetainedPresenceUntil = Date.now() + 5000;
       state = null;
       meta = null;
+      presence = {};
       stateSeen = false;
       canvasSeen = false;
       pendingCanvas = null;
@@ -531,6 +541,15 @@
       publishPresence(true);
       renderAll();
       scheduleInitialState();
+    }
+
+    /* «Ждём» от ушедшего ведущего не должно наследоваться новому игроку.
+       Если в комнате нет живых собеседников, чистим старый рисунок и состояние,
+       чтобы комната началась с нового раунда. */
+    function clearAbandonedWaiting() {
+      if (typeof abandonedWaitingRoom !== 'function' || !abandonedWaitingRoom()) return false;
+      clearOrphanedRoom();
+      return true;
     }
 
     function scheduleOrphanCheck() {
@@ -658,6 +677,7 @@
     G.scheduleInitialState = scheduleInitialState;
     G.resyncRoom = resyncRoom;
     G.refreshRoom = refreshRoom;
+    G.clearAbandonedWaiting = clearAbandonedWaiting;
     G.isSyncPending = isSyncPending;
     G.finishResync = finishResync;
     G.flushPendingCanvas = flushPendingCanvas;
