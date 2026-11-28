@@ -119,9 +119,19 @@
       if (!local) return 1;
       if (!incoming) return -1;
       /* Подписанное исправление хода от живого художника должно догнать
-         клиент, который успел себе назначить новый раунд с чужим ведущим. */
-      var defense = turnDefense(incoming);
-      if (defense && Number(incoming.rev) > Number(local.rev || 0)) return 1;
+         клиент, который успел себе назначить новый раунд с чужим ведущим.
+         Но подпись прошлого раунда не имеет права отменять уже завершённый
+         переход к следующему раунду. */
+      var incomingDefense = turnDefense(incoming);
+      var localDefense = turnDefense(local);
+      var incomingDefRound = incomingDefense ? Number(incomingDefense.round) || 0 : 0;
+      var localDefRound = localDefense ? Number(localDefense.round) || 0 : 0;
+      if (incomingDefense && incomingDefRound > localDefRound &&
+          Number(incoming.rev) > Number(local.rev || 0)) return 1;
+      /* Старая подпись проигрывает только подписанному новому раунду.
+         Клиент без подписи (например, ещё на старой версии) не должен
+         отклоняться только из-за того, что наша копия подписана. */
+      if (localDefense && incomingDefense && localDefRound > incomingDefRound) return -1;
       var localRound = Number(local.round) || 0;
       var incomingRound = Number(incoming.round) || 0;
       if (incomingRound !== localRound) return incomingRound > localRound ? 1 : -1;
@@ -143,6 +153,10 @@
        паузы и без подписи ушедшего художника. */
     function guardActiveDrawer(local, incoming, ctx) {
       if (!local || !incoming || !ctx || !ctx.visibleDrawer) return false;
+      /* Возврат из скрытой вкладки или переподключение: локальный ход ещё
+         считается нашим, пока не сверена комната. В этот момент защита
+         превращает чужой новый раунд в старый и возвращает рисование себе. */
+      if (ctx.resyncing || ctx.turnLocked) return false;
       var localDrawer = String(local.drawer || '');
       if (!localDrawer || String(incoming.drawer || '') === localDrawer) return false;
       if (incoming.reveal || incoming.hitInfo) return false;
@@ -181,7 +195,10 @@
        пришла поправка от настоящего ведущего. */
     function acceptsSignedDefense(local, incoming) {
       var defense = turnDefense(incoming);
-      return !!defense && Number(incoming.rev) > Number((local && local.rev) || 0);
+      if (!defense || Number(incoming.rev) <= Number((local && local.rev) || 0)) return false;
+      var localDefense = turnDefense(local);
+      if (localDefense && Number(defense.round) < Number(localDefense.round)) return false;
+      return true;
     }
 
     /* retained-state без свежего retained-presence не означает пустую комнату.
