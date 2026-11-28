@@ -731,10 +731,13 @@
 
     /* Случайный выбор с небольшим, но не нулевым шансом для только что
        рисовавшего: он не исключается из очереди, но не доминирует в ней. */
-    function weightedDrawerId(ids, previousId) {
+    function weightedDrawerId(ids, previousId, seed) {
       if (!ids.length) return '';
       var pool = ids.filter(function (id) { return !isIdBanned(id); });
       if (!pool.length) pool = ids.slice();
+      if (typeof consensusWeightedDrawerId === 'function') {
+        return consensusWeightedDrawerId(pool, previousId, seed);
+      }
       var weights = pool.map(function (id) { return id === previousId ? 1 : 10; });
       var total = weights.reduce(function (sum, weight) { return sum + weight; }, 0);
       var ticket = Math.random() * total;
@@ -789,7 +792,8 @@
       });
       var guesserWantsDraw = !!nextDrawerId && willing.indexOf(nextDrawerId) >= 0;
       var pool = willing.length ? willing : ids;
-      var nextId = guesserWantsDraw ? nextDrawerId : weightedDrawerId(pool, state.drawer);
+      var rotationSeed = state.round + ':' + state.startedAt + ':' + state.wordIndex;
+      var nextId = guesserWantsDraw ? nextDrawerId : weightedDrawerId(pool, state.drawer, rotationSeed);
       if (!nextId) nextId = myId;
       var index = ids.indexOf(nextId);
       if (index > 0) {
@@ -1108,7 +1112,7 @@
 
     function finishReveal(reveal, force) {
       if (!state || !state.reveal || state.reveal.id !== reveal.id) return;
-      if (Date.now() < Number(reveal.until)) return;
+      if (!force && Date.now() < Number(reveal.until)) return;
       /* Сначала объявляем всем, кто берёт паузу, и только потом меняем раунд.
          Так два видимых игрока не переведут ход дважды. */
       if (state.reveal.rotatedBy) return;
