@@ -399,10 +399,6 @@ textarea { resize: vertical; }
   0%, 100% { box-shadow: 0 16px 40px rgba(0, 0, 0, .45); }
   25%, 65% { box-shadow: 0 0 0 3px rgba(52, 211, 153, .75), 0 16px 40px rgba(0, 0, 0, .45); }
 }
-.stage-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 14px; padding: 8px 4px 0; font-size: 11px; }
-.room-line, .footer-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.room-line strong { color: var(--text); font-size: 12px; font-weight: 900; }
-
 /* На широком экране правая колонка занимает всю высоту окна, как верхняя
    и нижняя панели: чат, игроки и настройки тянутся вместе с ней. */
 .side-panel {
