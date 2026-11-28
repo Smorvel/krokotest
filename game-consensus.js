@@ -201,56 +201,91 @@
        — разница deadline - updatedAt внутри одной и той же копии: она не
        зависит от сдвига часов. При получении копии запоминаем её локальный
        момент, а затем все таймеры считаем уже по локальным часам. */
-    var clockCache = { sig: '', deadlineAt: 0, revealSig: '', revealUntil: 0 };
+    /* Если метки автора уже давно не соответствуют локальным часам, их
+       длительность больше нельзя использовать для запуска нового раунда. */
+    var CLOCK_WINDOW_MS = 5 * 60 * 1000;
+    var clockCache = {
+      sig: '', deadlineAt: 0, usable: true,
+      revealKey: '', revealUntil: 0, revealKnown: false
+    };
 
+    /* Ключ не включает rev/updatedAt: одна и та же пауза или один и тот же
+       дедлайн могут быть переопубликованы позже другим игроком. Привязка к
+       локальным часам должна сохраняться, иначе сдвиг вернётся. */
     function clockSignature(state) {
       if (!state) return '';
       return [
         Number(state.round) || 0,
         Number(state.wordIndex) || 0,
         Number(state.startedAt) || 0,
-        Number(state.deadline) || 0,
-        Number(state.rev) || 0,
-        String(state.updatedBy || ''),
-        Number(state.updatedAt) || 0
+        Number(state.deadline) || 0
       ].join('|');
     }
 
-    function noteStateClock(raw) {
+    function revealKey(reveal) {
+      if (!reveal || !Number(reveal.until)) return '';
+      return String(reveal.id || '') + '|' + Number(reveal.until);
+    }
+
+    function noteStateClock(raw, retained) {
       if (!raw || typeof raw !== 'object') return;
       var sig = clockSignature(raw);
-      if (!sig || sig === clockCache.sig) return;
+      if (!sig) return;
       var now = Date.now();
       var updatedAt = Number(raw.updatedAt) || 0;
-      var deadline = Number(raw.deadline) || 0;
-      var span = deadline && updatedAt ? deadline - updatedAt : 0;
-      clockCache.sig = sig;
-      clockCache.deadlineAt = deadline && span >= 0
-        ? now + Math.min(span, 24 * 60 * 60 * 1000)
-        : 0;
+      var age = updatedAt ? now - updatedAt : CLOCK_WINDOW_MS + 1;
+      /* Слишком старая или слишком «будущая» копия не даёт права отсчитывать
+         новый раунд: иначе задержанный retained-state снова показывает
+         «Время вышло!» при каждом переподключении. Retained-копию принимаем
+         только в узком окне: настоящая игра шлёт state без retain. */
+      var window = retained ? 60 * 1000 : CLOCK_WINDOW_MS;
+      var sameRound = sig === clockCache.sig;
+      clockCache.usable = age >= -window && age <= window;
+      if (!sameRound) {
+        clockCache.sig = sig;
+        var deadline = Number(raw.deadline) || 0;
+        var span = deadline && updatedAt ? deadline - updatedAt : 0;
+        clockCache.deadlineAt = clockCache.usable && span >= 0
+          ? now + Math.min(span, 24 * 60 * 60 * 1000)
+          : now;
+      } else if (!clockCache.usable) {
+        clockCache.deadlineAt = now;
+      }
       var reveal = raw.reveal;
       var until = reveal && Number(reveal.until) || 0;
+      var key = revealKey(reveal);
       var revealSpan = until && updatedAt ? until - updatedAt : 0;
-      clockCache.revealSig = reveal && until ? String(reveal.id) + '|' + until + '|' + updatedAt : '';
-      clockCache.revealUntil = revealSpan >= 0
-        ? now + Math.min(revealSpan, 10 * 60 * 1000)
-        : 0;
+      /* Ключ не включает updatedAt: одна и та же пауза может быть
+         переопубликована позже. Возвращаем зафиксированное локальное время
+         даже когда оно равно нулю — так просроченная пауза не оживает. */
+      if (!key || !clockCache.revealKnown || key !== clockCache.revealKey) {
+        clockCache.revealKey = key;
+        clockCache.revealKnown = !!key;
+        clockCache.revealUntil = clockCache.usable && key && revealSpan >= 0
+          ? now + Math.min(revealSpan, 5000)
+          : 0;
+      } else if (!clockCache.usable) {
+        clockCache.revealUntil = 0;
+      }
     }
 
     function localDeadline(state) {
       if (!state) return 0;
-      if (clockCache.sig === clockSignature(state) && clockCache.deadlineAt) {
-        return clockCache.deadlineAt;
-      }
+      if (clockCache.sig === clockSignature(state)) return clockCache.deadlineAt || Date.now();
       return Number(state.deadline) || 0;
     }
 
     function localRevealUntil(state) {
       if (!state || !state.reveal) return 0;
-      var until = Number(state.reveal.until) || 0;
-      var sig = String(state.reveal.id) + '|' + until + '|' + (Number(state.updatedAt) || 0);
-      if (clockCache.revealSig === sig && clockCache.revealUntil) return clockCache.revealUntil;
-      return until;
+      var key = revealKey(state.reveal);
+      if (key && clockCache.revealKnown && key === clockCache.revealKey) {
+        return clockCache.revealUntil;
+      }
+      return Number(state.reveal.until) || 0;
+    }
+
+    function clockKnown(state) {
+      return !!state && !!clockCache.sig && clockCache.sig === clockSignature(state);
     }
 
     /* Возвращаем чужую копию в наш раунд, но сохраняем чат, очки и реакции.
@@ -302,5 +337,6 @@
     G.consensusNoteStateClock = noteStateClock;
     G.consensusLocalDeadline = localDeadline;
     G.consensusLocalRevealUntil = localRevealUntil;
+    G.consensusClockKnown = clockKnown;
   }
 })(window.KROKO_GAME);
