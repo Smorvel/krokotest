@@ -263,6 +263,7 @@
       }
       var data = K.parse(message);
       if (!data) return;
+      if (!guardIncoming(topic, data, packet)) return;
       var metaTopic = K.topic(room, 'meta');
   
       if (topic === metaTopic) {
