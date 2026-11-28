@@ -41,7 +41,13 @@
     function roundDeadline() {
       if (!state) return 0;
       var deadline = Number(state.deadline) || 0;
-      if (deadline) return deadline;
+      if (deadline) {
+        if (typeof consensusLocalDeadline === 'function') {
+          var localDeadlineAt = consensusLocalDeadline(state);
+          if (localDeadlineAt) return localDeadlineAt;
+        }
+        return deadline;
+      }
       if (!Number(state.roundMs)) return 0;
       return (Number(state.startedAt) || 0) + Number(state.roundMs);
     }
@@ -456,6 +462,7 @@
       state.rev = (Number(state.rev) || 0) + 1;
       state.updatedAt = Date.now();
       state.updatedBy = myId;
+      if (typeof consensusNoteStateClock === 'function') consensusNoteStateClock(state);
       /* Общее состояние НИКОГДА не несёт рисунок. Единственный источник
          холста — canvas/<round> и stroke/<id>. Раньше задержанная копия
          state от другого игрока могла обнулить штрихи и раунд. */
@@ -1126,7 +1133,10 @@
 
     function finishReveal(reveal, force) {
       if (!state || !state.reveal || state.reveal.id !== reveal.id) return;
-      if (!force && Date.now() < Number(reveal.until)) return;
+      var until = typeof consensusLocalRevealUntil === 'function'
+        ? (consensusLocalRevealUntil(state) || Number(reveal.until) || 0)
+        : (Number(reveal.until) || 0);
+      if (!force && Date.now() < until) return;
       /* Сначала объявляем всем, кто берёт паузу, и только потом меняем раунд.
          Так два видимых игрока не переведут ход дважды. */
       if (state.reveal.rotatedBy) return;
@@ -1135,14 +1145,14 @@
          паузы завершить может любой видимый игрок. Страж-room может завершить
          застрявшую паузу принудительно, даже если все остальные скрыты. */
       var fallback = force || (visiblePresentPlayers().some(function (p) { return p.id === myId; }) &&
-        Date.now() >= Number(reveal.until) + 3000);
+        Date.now() >= until + 3000);
       if (!leader && !fallback) return;
       state.reveal.rotatedBy = myId;
       publishState();
       setTimeout(function () {
         if (!state || !state.reveal || state.reveal.id !== reveal.id) return;
         if (state.reveal.rotatedBy !== myId) return;
-        if (!force && !leader && !isRevealLeader() && Date.now() < Number(reveal.until) + 3000) return;
+        if (!force && !leader && !isRevealLeader() && Date.now() < until + 3000) return;
         rotateDrawer(reveal.reason || 'Раунд завершён.', reveal.guesserId);
         publishState(true);
         renderAll();
@@ -1153,7 +1163,10 @@
       if (!reveal || !reveal.id || handledRevealId === reveal.id) return;
       handledRevealId = reveal.id;
       if (typeof renderReveal === 'function') renderReveal();
-      var wait = Math.max(0, reveal.until - Date.now());
+      var adjustedUntil = typeof consensusLocalRevealUntil === 'function'
+        ? (consensusLocalRevealUntil(state) || Number(reveal.until) || 0)
+        : (Number(reveal.until) || 0);
+      var wait = Math.max(0, adjustedUntil - Date.now());
       setTimeout(function () {
         if (!state || !state.reveal || state.reveal.id !== reveal.id) return;
         finishReveal(reveal);
