@@ -401,7 +401,9 @@
 
       var reveal = safe.reveal;
       if (reveal && state.reveal && !document.hidden) {
-        var until = Number(reveal.until) || now;
+        var until = typeof consensusLocalRevealUntil === 'function'
+          ? (consensusLocalRevealUntil(state) || Number(reveal.until) || now)
+          : (Number(reveal.until) || now);
         if (now - until > REVEAL_HARD_GRACE_MS && !reveal.rotatedBy) {
           if (typeof finishReveal === 'function') finishReveal(state.reveal, true);
         }
