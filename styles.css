@@ -451,10 +451,27 @@ textarea { resize: vertical; }
   border-radius: 6px;
   background: rgba(15, 23, 42, .94);
   color: var(--text);
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 700;
   line-height: 1.35;
   box-shadow: 0 6px 18px rgba(0, 0, 0, .35);
+  transform-origin: right center;
+}
+.system-notice.leaving {
+  pointer-events: none;
+  animation: system-notice-out 350ms ease-in forwards;
+}
+@keyframes system-notice-out {
+  from {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+    max-height: 60px;
+  }
+  to {
+    opacity: 0;
+    transform: translateX(56px) scale(.96);
+    max-height: 0;
+  }
 }
 .message { padding: 5px 8px; border-radius: 6px; background: var(--surface-2); font-size: 11px; }
 .message b { color: var(--green); }
