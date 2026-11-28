@@ -12,11 +12,72 @@
     var resyncStateSeen = false;
     var resyncStartedAt = 0;
     var resyncWatchTimer = null;
+    var pendingReactionEvents = {};
+    var presenceSeen = {};
+    var pendingSystemNotices = [];
 
     function setConnection(text, online) {
       if (!el.connection) return;
       el.connection.textContent = text;
       el.connection.classList.toggle('online', !!online);
+    }
+
+    /* Системные плашки о входе/выходе живут локально: каждый клиент сам видит
+       смену presence и показывает уведомление, не рассылая лишний state. */
+    function queueSystemNotice(text) {
+      if (!text) return;
+      if (!state) {
+        pendingSystemNotices.push(text);
+        return;
+      }
+      if (typeof systemMessage === 'function') systemMessage(text);
+    }
+
+    function flushSystemNotices() {
+      if (!state || !pendingSystemNotices.length) return;
+      var notices = pendingSystemNotices;
+      pendingSystemNotices = [];
+      notices.forEach(function (text) {
+        if (typeof systemMessage === 'function') systemMessage(text);
+      });
+    }
+
+    function notePresenceChange(data) {
+      if (!data || !data.id || data.id === myId || isPlayerBanned(data)) return;
+      var id = String(data.id);
+      var record = presenceSeen[id] || {
+        joinedAt: 0, name: '', announcedJoin: false, announcedLeave: false
+      };
+      var online = data.online !== false;
+      var joinedAt = Number(data.joinedAt) || 0;
+      var name = String(data.name || record.name || 'Игрок');
+      if (!online) {
+        if (record.joinedAt && !record.announcedLeave) {
+          record.announcedLeave = true;
+          queueSystemNotice(name + ' вышел из комнаты.');
+        }
+      } else {
+        if (joinedAt !== record.joinedAt) {
+          record.announcedJoin = false;
+          record.announcedLeave = false;
+          record.joinedAt = joinedAt;
+        }
+        if (joinedAt > subscribedAt && !record.announcedJoin) {
+          record.announcedJoin = true;
+          queueSystemNotice(name + ' вошёл в комнату.');
+        }
+        record.name = name;
+      }
+      presenceSeen[id] = record;
+    }
+
+    function flushPendingReactionEvents() {
+      if (!state || !Object.keys(pendingReactionEvents).length) return;
+      var events = pendingReactionEvents;
+      pendingReactionEvents = {};
+      Object.keys(events).forEach(function (id) {
+        if (typeof applyReactionEvent === 'function') applyReactionEvent(events[id]);
+      });
     }
 
     function applyMeta() {
@@ -74,7 +135,7 @@
       return [
         K.topic(room, 'meta'), K.topic(room, 'state'), K.topic(room, 'presence/+'),
         K.topic(room, 'draft/+'), K.topic(room, 'stroke/+'), K.topic(room, 'canvas/+'),
-        K.topic(room, 'chat/+')
+        K.topic(room, 'chat/+'), K.topic(room, 'reaction/+')
       ];
     }
 
@@ -410,6 +471,8 @@
         var previousRound = state ? state.round + ':' + state.wordIndex : null;
         var merged = mergeState(normalizeState(data), state);
         state = merged.state;
+        flushSystemNotices();
+        flushPendingReactionEvents();
         Object.keys(remoteDrafts).forEach(function (id) {
           var draft = remoteDrafts[id];
           if (!draft) return;
@@ -496,10 +559,22 @@
         return;
       }
   
+      if (topic.indexOf(K.topic(room, 'reaction/')) === 0) {
+        if (!data || !data.id) return;
+        if (state && data.round && Number(data.round) !== Number(state.round)) return;
+        if (!state) {
+          pendingReactionEvents[String(data.id)] = data;
+          return;
+        }
+        if (typeof applyReactionEvent === 'function') applyReactionEvent(data);
+        return;
+      }
+
       if (topic.indexOf(K.topic(room, 'presence/')) === 0) {
         if (packet && packet.retain && Date.now() < ignoreRetainedPresenceUntil) return;
         if (!data.id) return;
         if (isPlayerBanned(data)) return;
+        notePresenceChange(data);
         /* Один profile.id на двух устройствах — не два игрока, а дубликат.
            Оставляем более свежую вкладку по тем же меткам, что и session guard. */
         if (data.id === myId && data.online !== false && data.sessionTabId &&
@@ -632,6 +707,9 @@
       meta = null;
       metaOwned = false;
       presence = {};
+      presenceSeen = {};
+      pendingSystemNotices = [];
+      pendingReactionEvents = {};
       stateSeen = false;
       canvasSeen = false;
       pendingCanvas = null;
@@ -757,6 +835,7 @@
         waitingForPlayers: false,
         expiredAt: 0
       });
+      flushSystemNotices();
       resetRoundTimer();
       chooseNextWord();
       handledStart = 0;
